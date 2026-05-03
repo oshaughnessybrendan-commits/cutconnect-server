@@ -1,15 +1,9 @@
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 app.post('/create-payment-intent', async (req, res) => {
   try {
@@ -42,5 +36,10 @@ app.post('/send-notification', async (req, res) => {
 
 app.post('/delete-account', async (req, res) => {
   try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
     const { userId } = req.body;
-    const { error } = await supabase.auth.admin.deleteUser
+    const { error } = await supaba
