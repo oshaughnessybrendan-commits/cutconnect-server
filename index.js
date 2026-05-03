@@ -38,8 +38,21 @@ app.post('/delete-account', async (req, res) => {
   try {
     const { createClient } = require('@supabase/supabase-js');
     const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
+      process.env.DB_URL,
+      process.env.DB_SERVICE_KEY
     );
     const { userId } = req.body;
-    const { error } = await supaba
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
