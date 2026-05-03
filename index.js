@@ -11,12 +11,37 @@ app.post('/create-payment-intent', async (req, res) => {
     const { amount, currency = 'usd' } = req.body;
     
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // convert to cents
+      amount: Math.round(amount * 100),
       currency,
       automatic_payment_methods: { enabled: true },
     });
-
     res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/send-notification', async (req, res) => {
+  try {
+    const { token, title, body } = req.body;
+    
+    const message = {
+      to: token,
+      sound: 'default',
+      title,
+      body,
+    };
+
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
