@@ -1,15 +1,19 @@
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 app.post('/create-payment-intent', async (req, res) => {
   try {
     const { amount, currency = 'usd' } = req.body;
-    
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
       currency,
@@ -24,32 +28,19 @@ app.post('/create-payment-intent', async (req, res) => {
 app.post('/send-notification', async (req, res) => {
   try {
     const { token, title, body } = req.body;
-    
-    const message = {
-      to: token,
-      sound: 'default',
-      title,
-      body,
-    };
-
+    const message = { to: token, sound: 'default', title, body };
     await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(message),
     });
-
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.post('/delete-account', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const { error } = await supabase.auth.admin.deleteUser
