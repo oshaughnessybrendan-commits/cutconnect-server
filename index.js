@@ -42,6 +42,16 @@ app.post('/delete-account', async (req, res) => {
       process.env.DB_SERVICE_KEY
     );
     const { userId } = req.body;
+    // Delete all user data first
+    await supabase.from('blocked_users').delete().eq('blocker_id', userId);
+    await supabase.from('blocked_users').delete().eq('blocked_id', userId);
+    await supabase.from('bids').delete().eq('user_id', userId);
+    await supabase.from('hires').delete().eq('mower_id', userId);
+    await supabase.from('hires').delete().eq('homeowner_id', userId);
+    await supabase.from('jobs').delete().eq('user_id', userId);
+    await supabase.from('messages').delete().eq('sender_id', userId);
+    await supabase.from('profiles').delete().eq('user_id', userId);
+    // Finally delete the auth user
     const { error } = await supabase.auth.admin.deleteUser(userId);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
