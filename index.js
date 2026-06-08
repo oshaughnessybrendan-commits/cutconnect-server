@@ -1,11 +1,16 @@
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
+const cron = require('node-cron');
+const { createClient } = require('@supabase/supabase-js');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ── Existing: immediate payment (used for bid acceptance flow) ──
+const supabase = createClient(process.env.DB_URL, process.env.DB_SERVICE_KEY);
+
+// ── Stripe: create payment intent (immediate charge flow) ──────────────────────
 app.post('/create-payment-intent', async (req, res) => {
   try {
     const { amount, currency = 'usd' } = req.body;
@@ -16,11 +21,12 @@ app.post('/create-payment-intent', async (req, res) => {
     });
     res.json({ clientSecret: paymentIntent.client_secret });
   } catch (error) {
+    console.error('create-payment-intent error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── New: authorize card (hold funds, don't charge yet) ──
+// ── Stripe: authorize only (capture_method: manual) ───────────────────────────
 app.post('/authorize-payment', async (req, res) => {
   try {
     const { amount, currency = 'usd' } = req.body;
@@ -30,58 +36,84 @@ app.post('/authorize-payment', async (req, res) => {
       capture_method: 'manual',
       automatic_payment_methods: { enabled: true },
     });
-    res.json({ clientSecret: paymentIntent.client_secret, paymentIntentId: paymentIntent.id });
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    });
   } catch (error) {
+    console.error('authorize-payment error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── New: capture payment (charge card after job complete) ──
+// ── Stripe: capture a previously authorized payment ───────────────────────────
 app.post('/capture-payment', async (req, res) => {
   try {
     const { paymentIntentId } = req.body;
     const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
     res.json({ success: true, status: paymentIntent.status });
   } catch (error) {
+    console.error('capture-payment error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── New: cancel authorization (release hold if mower declines) ──
+// ── Stripe: cancel an authorization ──────────────────────────────────────────
 app.post('/cancel-authorization', async (req, res) => {
   try {
     const { paymentIntentId } = req.body;
     const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
     res.json({ success: true, status: paymentIntent.status });
   } catch (error) {
+    console.error('cancel-authorization error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── Notifications ──
+// ── Expo push notification helper ─────────────────────────────────────────────
+async function sendPush(token, title, body) {
+  if (!token) return;
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: token, sound: 'default', title, body }),
+    });
+    const result = await response.json();
+    if (result.data?.status === 'error') {
+      console.error('Expo push error:', result.data.message, 'token:', token);
+    }
+  } catch (err) {
+    console.error('sendPush fetch error:', err.message);
+  }
+}
+
+// Lookup push token for a user (handles users with multiple profile rows)
+async function getPushToken(userId) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('push_token')
+    .eq('user_id', userId)
+    .not('push_token', 'is', null)
+    .limit(1);
+  return data?.[0]?.push_token ?? null;
+}
+
+// ── Send notification endpoint ────────────────────────────────────────────────
 app.post('/send-notification', async (req, res) => {
   try {
     const { token, title, body } = req.body;
-    const message = { to: token, sound: 'default', title, body };
-    await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(message),
-    });
+    await sendPush(token, title, body);
     res.json({ success: true });
   } catch (error) {
+    console.error('send-notification error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── Delete account ──
+// ── Delete account ────────────────────────────────────────────────────────────
 app.post('/delete-account', async (req, res) => {
   try {
-    const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.DB_URL,
-      process.env.DB_SERVICE_KEY
-    );
     const { userId } = req.body;
     await supabase.from('blocked_users').delete().eq('blocker_id', userId);
     await supabase.from('blocked_users').delete().eq('blocked_id', userId);
@@ -95,13 +127,70 @@ app.post('/delete-account', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch (error) {
+    console.error('delete-account error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// ── Daily reminder cron (runs every day at 10:00 AM UTC) ──────────────────────
+async function sendDailyReminders() {
+  console.log('Running daily hire reminders...');
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: hires, error } = await supabase
+      .from('hires')
+      .select('*')
+      .in('status', ['requested', 'awaiting_payment', 'complete'])
+      .lt('updated_at', cutoff);
+
+    if (error) { console.error('Reminder query error:', error.message); return; }
+    if (!hires || hires.length === 0) { console.log('No stale hires found.'); return; }
+
+    for (const hire of hires) {
+      // Mower hasn't responded to hire request in 24h → remind homeowner
+      if (hire.status === 'requested') {
+        const token = await getPushToken(hire.homeowner_id);
+        await sendPush(
+          token,
+          '⏳ Still waiting on your mower',
+          `${hire.mower_name} hasn't responded to your hire request yet. You can follow up or cancel in the app.`
+        );
+      }
+
+      // Mower accepted but homeowner hasn't authorized payment in 24h → remind homeowner
+      if (hire.status === 'awaiting_payment') {
+        const token = await getPushToken(hire.homeowner_id);
+        await sendPush(
+          token,
+          '💳 Action needed — authorize payment',
+          `${hire.mower_name} accepted your job! Open CutConnect to authorize your card and confirm the booking.`
+        );
+      }
+
+      // Job marked complete but homeowner hasn't paid in 24h → remind homeowner
+      if (hire.status === 'complete') {
+        const token = await getPushToken(hire.homeowner_id);
+        await sendPush(
+          token,
+          '💰 Please pay your mower',
+          `${hire.mower_name} completed your lawn job over 24 hours ago. Open CutConnect to submit payment.`
+        );
+      }
+    }
+
+    console.log(`Reminder run complete. Processed ${hires.length} stale hire(s).`);
+  } catch (err) {
+    console.error('sendDailyReminders error:', err.message);
+  }
+}
+
+// Run at 10:00 AM UTC every day
+cron.schedule('0 10 * * *', sendDailyReminders);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`CutConnect server running on port ${PORT}`));
