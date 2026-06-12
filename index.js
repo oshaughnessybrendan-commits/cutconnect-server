@@ -100,9 +100,19 @@ async function getPushToken(userId) {
 }
 
 // ── Send notification endpoint ────────────────────────────────────────────────
+// Accepts either { token, title, body } or { userId, title, body }
 app.post('/send-notification', async (req, res) => {
   try {
-    const { token, title, body } = req.body;
+    const { token: rawToken, userId, title, body } = req.body;
+    let token = rawToken;
+    if (!token && userId) {
+      token = await getPushToken(userId);
+      console.log(`[notify] userId=${userId} token=${token ?? 'NOT FOUND'}`);
+    }
+    if (!token) {
+      console.warn(`[notify] No push token — title="${title}"`);
+      return res.json({ success: false, reason: 'no_token' });
+    }
     await sendPush(token, title, body);
     res.json({ success: true });
   } catch (error) {
