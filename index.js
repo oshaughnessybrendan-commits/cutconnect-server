@@ -10,6 +10,9 @@ app.use(express.json());
 
 const supabase = createClient(process.env.DB_URL, process.env.DB_SERVICE_KEY);
 
+// Brendan's user ID — receives manual payout notifications
+const ADMIN_USER_ID = '372a2db2-1ad3-40f7-b44c-56def200bf66';
+
 // ── Stripe: create payment intent (immediate charge flow) ──────────────────────
 app.post('/create-payment-intent', async (req, res) => {
   try {
@@ -46,11 +49,55 @@ app.post('/authorize-payment', async (req, res) => {
   }
 });
 
-// ── Stripe: capture a previously authorized payment ───────────────────────────
+// ── Stripe: capture + auto payout ────────────────────────────────────────────
 app.post('/capture-payment', async (req, res) => {
   try {
-    const { paymentIntentId } = req.body;
+    const { paymentIntentId, hireId } = req.body;
     const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+
+    if (hireId) {
+      const { data: hireRows } = await supabase.from('hires').select('*').eq('id', hireId).limit(1);
+      const hire = hireRows?.[0];
+
+      if (hire) {
+        const { data: mowerRows } = await supabase
+          .from('profiles').select('*').eq('user_id', hire.mower_id).eq('role', 'mower').limit(1);
+        const mower = mowerRows?.[0];
+        const rawAmt = parseFloat((hire.bid_amount || '0').replace(/[^0-9.]/g, ''));
+
+        if (mower?.payout_method === 'stripe' && mower?.stripe_connect_id) {
+          // Auto-transfer bid amount to mower (platform keeps the 10% fee)
+          const transferAmt = Math.round(rawAmt * 100);
+          await stripe.transfers.create({
+            amount: transferAmt,
+            currency: 'usd',
+            destination: mower.stripe_connect_id,
+            description: `CutConnect payout — job ${hire.job_id || hire.id}`,
+          });
+          console.log(`[payout] Stripe transfer $${rawAmt} to ${mower.stripe_connect_id}`);
+          // Notify mower they've been paid
+          const mowerToken = await getPushToken(hire.mower_id);
+          await sendPush(mowerToken, '💰 You\'ve been paid!', `$${rawAmt.toFixed(2)} has been transferred to your bank account via Stripe.`);
+        } else if (mower?.payout_method === 'venmo' || mower?.payout_method === 'zelle') {
+          // Notify Brendan to manually pay the mower
+          const adminToken = await getPushToken(ADMIN_USER_ID);
+          const payoutAmt = (rawAmt * 0.9).toFixed(2);
+          const payoutInfo = mower.payout_method === 'venmo'
+            ? `Venmo: ${mower.venmo_handle || 'not set'}`
+            : `Zelle: ${mower.zelle_info || 'not set'}`;
+          await sendPush(
+            adminToken,
+            '💰 Manual Payout Needed',
+            `Pay ${mower.name} $${payoutAmt} via ${payoutInfo}`
+          );
+          console.log(`[payout] Manual payout alert sent — ${mower.name} $${payoutAmt} via ${mower.payout_method}`);
+          // Still notify mower job is paid
+          const mowerToken = await getPushToken(hire.mower_id);
+          await sendPush(mowerToken, '💰 Payment Received!', `Your payment of $${rawAmt.toFixed(2)} is on its way via ${mower.payout_method}.`);
+        }
+      }
+    }
+
     res.json({ success: true, status: paymentIntent.status });
   } catch (error) {
     console.error('capture-payment error:', error.message);
@@ -66,6 +113,57 @@ app.post('/cancel-authorization', async (req, res) => {
     res.json({ success: true, status: paymentIntent.status });
   } catch (error) {
     console.error('cancel-authorization error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Stripe Connect: create account + return onboarding URL ───────────────────
+app.post('/create-connect-account', async (req, res) => {
+  try {
+    const { mowerId } = req.body;
+
+    // Check if mower already has a Connect account
+    const { data: profileRows } = await supabase
+      .from('profiles').select('stripe_connect_id').eq('user_id', mowerId).eq('role', 'mower').limit(1);
+    let accountId = profileRows?.[0]?.stripe_connect_id;
+
+    if (!accountId) {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        capabilities: { transfers: { requested: true } },
+      });
+      accountId = account.id;
+      await supabase.from('profiles').update({ stripe_connect_id: accountId })
+        .eq('user_id', mowerId).eq('role', 'mower');
+    }
+
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: 'cutconnect2://stripe-refresh',
+      return_url: 'cutconnect2://stripe-return',
+      type: 'account_onboarding',
+    });
+
+    res.json({ url: accountLink.url, accountId });
+  } catch (error) {
+    console.error('create-connect-account error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Stripe Connect: check account status ─────────────────────────────────────
+app.post('/connect-status', async (req, res) => {
+  try {
+    const { accountId } = req.body;
+    const account = await stripe.accounts.retrieve(accountId);
+    res.json({
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+      detailsSubmitted: account.details_submitted,
+    });
+  } catch (error) {
+    console.error('connect-status error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -100,7 +198,6 @@ async function getPushToken(userId) {
 }
 
 // ── Send notification endpoint ────────────────────────────────────────────────
-// Accepts either { token, title, body } or { userId, title, body }
 app.post('/send-notification', async (req, res) => {
   try {
     const { token: rawToken, userId, title, body } = req.body;
@@ -162,34 +259,20 @@ async function sendDailyReminders() {
     if (!hires || hires.length === 0) { console.log('No stale hires found.'); return; }
 
     for (const hire of hires) {
-      // Mower hasn't responded to hire request in 24h → remind homeowner
       if (hire.status === 'requested') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(
-          token,
-          '⏳ Still waiting on your mower',
-          `${hire.mower_name} hasn't responded to your hire request yet. You can follow up or cancel in the app.`
-        );
+        await sendPush(token, '⏳ Still waiting on your mower',
+          `${hire.mower_name} hasn't responded to your hire request yet. You can follow up or cancel in the app.`);
       }
-
-      // Mower accepted but homeowner hasn't authorized payment in 24h → remind homeowner
       if (hire.status === 'awaiting_payment') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(
-          token,
-          '💳 Action needed — authorize payment',
-          `${hire.mower_name} accepted your job! Open CutConnect to authorize your card and confirm the booking.`
-        );
+        await sendPush(token, '💳 Action needed — authorize payment',
+          `${hire.mower_name} accepted your job! Open CutConnect to authorize your card and confirm the booking.`);
       }
-
-      // Job marked complete but homeowner hasn't paid in 24h → remind homeowner
       if (hire.status === 'complete') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(
-          token,
-          '💰 Please pay your mower',
-          `${hire.mower_name} completed your lawn job over 24 hours ago. Open CutConnect to submit payment.`
-        );
+        await sendPush(token, '💰 Please pay your mower',
+          `${hire.mower_name} completed your lawn job over 24 hours ago. Open CutConnect to submit payment.`);
       }
     }
 
@@ -199,7 +282,6 @@ async function sendDailyReminders() {
   }
 }
 
-// Run at 10:00 AM UTC every day
 cron.schedule('0 10 * * *', sendDailyReminders);
 
 const PORT = process.env.PORT || 3000;
