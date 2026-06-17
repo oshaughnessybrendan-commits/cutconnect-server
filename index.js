@@ -218,6 +218,22 @@ app.post('/send-notification', async (req, res) => {
   }
 });
 
+// ── Mark messages as read (bypasses RLS using service key) ───────────────────
+app.post('/mark-messages-read', async (req, res) => {
+  try {
+    const { receiverId, senderId } = req.body;
+    if (!receiverId) return res.status(400).json({ error: 'receiverId required' });
+    let query = supabase.from('messages').update({ read: true }).eq('receiver_id', receiverId).eq('read', false);
+    if (senderId) query = query.eq('sender_id', senderId);
+    const { error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('mark-messages-read error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── Delete account ────────────────────────────────────────────────────────────
 app.post('/delete-account', async (req, res) => {
   try {
