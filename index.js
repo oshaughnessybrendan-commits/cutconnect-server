@@ -129,7 +129,6 @@ app.post('/create-connect-account', async (req, res) => {
 
     if (!accountId) {
       const account = await stripe.accounts.create({
-        type: 'express',
         country: 'US',
         capabilities: { transfers: { requested: true } },
         controller: {
