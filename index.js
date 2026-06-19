@@ -132,6 +132,11 @@ app.post('/create-connect-account', async (req, res) => {
         type: 'express',
         country: 'US',
         capabilities: { transfers: { requested: true } },
+        controller: {
+          losses: { payments: 'stripe' },
+          fees: { payer: 'application' },
+          stripe_dashboard: { type: 'express' },
+        },
       });
       accountId = account.id;
       await supabase.from('profiles').update({ stripe_connect_id: accountId })
