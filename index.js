@@ -132,7 +132,7 @@ app.post('/create-connect-account', async (req, res) => {
         country: 'US',
         capabilities: { transfers: { requested: true } },
         controller: {
-          losses: { payments: 'stripe' },
+          losses: { payments: 'application' },
           fees: { payer: 'application' },
           stripe_dashboard: { type: 'express' },
         },
