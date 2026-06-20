@@ -146,8 +146,8 @@ app.post('/create-connect-account', async (req, res) => {
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: 'cutconnect2://stripe-refresh',
-      return_url: 'cutconnect2://stripe-return',
+      refresh_url: 'https://cutconnect-server-production.up.railway.app/stripe-refresh',
+      return_url: 'https://cutconnect-server-production.up.railway.app/stripe-return',
       type: 'account_onboarding',
     });
 
@@ -260,6 +260,10 @@ app.post('/delete-account', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ── Stripe Connect redirect pages ─────────────────────────────────────────────
+app.get('/stripe-return', (req, res) => res.send('<html><body><h2>Bank account setup complete! Return to the CutConnect app.</h2></body></html>'));
+app.get('/stripe-refresh', (req, res) => res.send('<html><body><h2>Session expired. Please return to CutConnect and try again.</h2></body></html>'));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
