@@ -32,13 +32,25 @@ app.post('/create-payment-intent', async (req, res) => {
 // ── Stripe: authorize only (capture_method: manual) ───────────────────────────
 app.post('/authorize-payment', async (req, res) => {
   try {
-    const { amount, currency = 'usd' } = req.body;
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100),
+    const { amount, currency = 'usd', mowerId } = req.body;
+    const amountCents = Math.round(amount * 100);
+    const feeCents = Math.round(amountCents * 0.10); // 10% platform fee
+    const intentParams = {
+      amount: amountCents,
       currency,
       capture_method: 'manual',
       automatic_payment_methods: { enabled: true },
-    });
+    };
+    if (mowerId) {
+      const { data: mowerRows } = await supabase.from('profiles').select('stripe_connect_id, payout_method').eq('user_id', mowerId).eq('role', 'mower').limit(1);
+      const stripeConnectId = mowerRows?.[0]?.stripe_connect_id;
+      const payoutMethod = mowerRows?.[0]?.payout_method;
+      if (stripeConnectId && payoutMethod === 'stripe') {
+        intentParams.application_fee_amount = feeCents;
+        intentParams.transfer_data = { destination: stripeConnectId };
+      }
+    }
+    const paymentIntent = await stripe.paymentIntents.create(intentParams);
     res.json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
@@ -66,18 +78,12 @@ app.post('/capture-payment', async (req, res) => {
         const rawAmt = parseFloat((hire.bid_amount || '0').replace(/[^0-9.]/g, ''));
 
         if (mower?.payout_method === 'stripe' && mower?.stripe_connect_id) {
-          // Auto-transfer bid amount to mower (platform keeps the 10% fee)
-          const transferAmt = Math.round(rawAmt * 100);
-          await stripe.transfers.create({
-            amount: transferAmt,
-            currency: 'usd',
-            destination: mower.stripe_connect_id,
-            description: `CutConnect payout — job ${hire.job_id || hire.id}`,
-          });
-          console.log(`[payout] Stripe transfer $${rawAmt} to ${mower.stripe_connect_id}`);
-          // Notify mower they've been paid
+          // Stripe automatically splits on capture via application_fee_amount + transfer_data
+          // set during authorization — no manual transfer needed
+          const payoutAmt = (rawAmt * 0.9).toFixed(2);
+          console.log(`[payout] Stripe auto-split on capture — mower gets $${payoutAmt}`);
           const mowerToken = await getPushToken(hire.mower_id);
-          await sendPush(mowerToken, '💰 You\'ve been paid!', `$${rawAmt.toFixed(2)} has been transferred to your bank account via Stripe.`);
+          await sendPush(mowerToken, '💰 You\'ve been paid!', `$${payoutAmt} has been transferred to your bank account via Stripe.`);
         } else if (mower?.payout_method === 'venmo' || mower?.payout_method === 'zelle') {
           // Notify Brendan to manually pay the mower
           const adminToken = await getPushToken(ADMIN_USER_ID);
@@ -131,7 +137,7 @@ app.post('/create-connect-account', async (req, res) => {
       const account = await stripe.accounts.create({
         type: 'express',
         country: 'US',
-        capabilities: { transfers: { requested: true } },
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
       });
       accountId = account.id;
       await supabase.from('profiles').update({ stripe_connect_id: accountId })
