@@ -279,7 +279,7 @@ async function sendDailyReminders() {
       .from('hires')
       .select('*')
       .in('status', ['requested', 'awaiting_payment', 'complete'])
-      .lt('updated_at', cutoff);
+      .lt('created_at', cutoff);
 
     if (error) { console.error('Reminder query error:', error.message); return; }
     if (!hires || hires.length === 0) { console.log('No stale hires found.'); return; }
@@ -320,7 +320,7 @@ async function autoCapturePastDue() {
       .select('*')
       .eq('status', 'complete')
       .not('payment_intent_id', 'is', null)
-      .lt('updated_at', cutoff);
+      .lt('created_at', cutoff);
     if (error) { console.error('auto-capture query error:', error.message); return; }
     if (!hires || hires.length === 0) { console.log('No past-due payments found.'); return; }
     for (const hire of hires) {
