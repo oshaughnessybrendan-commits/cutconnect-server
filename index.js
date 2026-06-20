@@ -320,7 +320,8 @@ async function autoCapturePastDue() {
       .select('*')
       .eq('status', 'complete')
       .not('payment_intent_id', 'is', null)
-      .lt('created_at', cutoff);
+      .not('completed_at', 'is', null)
+      .lt('completed_at', cutoff);
     if (error) { console.error('auto-capture query error:', error.message); return; }
     if (!hires || hires.length === 0) { console.log('No past-due payments found.'); return; }
     for (const hire of hires) {
