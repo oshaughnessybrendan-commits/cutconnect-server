@@ -310,5 +310,42 @@ async function sendDailyReminders() {
 
 cron.schedule('0 10 * * *', sendDailyReminders);
 
+// ── Auto-capture payments 48hrs after job marked complete ─────────────────────
+async function autoCapturePastDue() {
+  console.log('Running auto-capture check...');
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data: hires, error } = await supabase
+      .from('hires')
+      .select('*')
+      .eq('status', 'complete')
+      .not('payment_intent_id', 'is', null)
+      .lt('updated_at', cutoff);
+    if (error) { console.error('auto-capture query error:', error.message); return; }
+    if (!hires || hires.length === 0) { console.log('No past-due payments found.'); return; }
+    for (const hire of hires) {
+      try {
+        console.log(`[auto-capture] Capturing payment for hire ${hire.id} — ${hire.bid_amount}`);
+        await stripe.paymentIntents.capture(hire.payment_intent_id);
+        await supabase.from('hires').update({ status: 'paid' }).eq('id', hire.id);
+        if (hire.job_id) await supabase.from('jobs').update({ status: 'paid' }).eq('id', hire.job_id);
+        // Notify both parties
+        const mowerToken = await getPushToken(hire.mower_id);
+        await sendPush(mowerToken, '💰 Payment Received!', `Your payment of ${hire.bid_amount} has been automatically processed.`);
+        const homeownerToken = await getPushToken(hire.homeowner_id);
+        await sendPush(homeownerToken, '💳 Payment Processed', `Your payment of ${hire.bid_amount} to ${hire.mower_name} has been automatically processed.`);
+        console.log(`[auto-capture] Success — hire ${hire.id}`);
+      } catch (err) {
+        console.error(`[auto-capture] Failed for hire ${hire.id}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('autoCapturePastDue error:', err.message);
+  }
+}
+
+// Run auto-capture every hour
+cron.schedule('0 * * * *', autoCapturePastDue);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CutConnect server running on port ${PORT}`));
