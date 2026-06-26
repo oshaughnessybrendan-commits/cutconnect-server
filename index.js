@@ -261,6 +261,39 @@ app.post('/delete-account', async (req, res) => {
   }
 });
 
+// ── Account deletion request page ────────────────────────────────────────────
+app.get('/delete-account', (req, res) => res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delete Your CutConnect Account</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 60px auto; padding: 0 24px; color: #1a1a1a; }
+    h1 { color: #2D6A2D; }
+    p { line-height: 1.6; color: #444; }
+    .card { background: #f6faf6; border: 1px solid #c8e6c9; border-radius: 12px; padding: 24px; margin-top: 24px; }
+    a { color: #2D6A2D; font-weight: 600; }
+    .note { font-size: 13px; color: #888; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🌿 Delete Your CutConnect Account</h1>
+  <p>You can delete your account directly inside the CutConnect app:</p>
+  <div class="card">
+    <strong>In the app:</strong>
+    <ol style="margin-top:8px; padding-left:20px; line-height:2;">
+      <li>Open CutConnect</li>
+      <li>Tap the <strong>⚙️ Settings</strong> icon (top right)</li>
+      <li>Scroll down and tap <strong>Delete Account</strong></li>
+      <li>Confirm — your account and all data will be permanently deleted</li>
+    </ol>
+  </div>
+  <p style="margin-top:24px;">If you no longer have access to the app, email us at <a href="mailto:oshaughnessy.brendan@gmail.com">oshaughnessy.brendan@gmail.com</a> with the subject line <strong>"Account Deletion Request"</strong> and include the email address associated with your account. We will delete it within 7 days.</p>
+  <p class="note">Deleting your account removes your profile, posted jobs, bids, messages, and payment history from our systems. This action cannot be undone.</p>
+</body>
+</html>`));
+
 // ── Stripe Connect redirect pages ─────────────────────────────────────────────
 app.get('/stripe-return', (req, res) => res.send('<html><body><h2>Bank account setup complete! Return to the CutConnect app.</h2></body></html>'));
 app.get('/stripe-refresh', (req, res) => res.send('<html><body><h2>Session expired. Please return to CutConnect and try again.</h2></body></html>'));
