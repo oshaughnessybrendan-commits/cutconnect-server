@@ -386,48 +386,40 @@ cron.schedule('0 * * * *', autoCapturePastDue);
 // and are not registered as a mower.
 async function sendSignupReminders() {
   console.log('Running signup reminders...');
-  const now = new Date();
-  const from = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString(); // 25hrs ago
-  const to   = new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString(); // 23hrs ago
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    // Find auth users who signed up in the 23–25hr window
     const { data: usersPage, error: authErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     if (authErr) { console.error('signup-reminder auth list error:', authErr.message); return; }
 
-    const candidates = (usersPage?.users ?? []).filter(u => {
-      const created = u.created_at;
-      return created >= from && created <= to;
-    });
-
+    const candidates = (usersPage?.users ?? []).filter(u => u.created_at <= cutoff);
     if (candidates.length === 0) { console.log('No signup-reminder candidates.'); return; }
 
+    let sent = 0;
     for (const user of candidates) {
       const userId = user.id;
 
-      // Skip if registered as a mower
-      const { data: mowerProfile } = await supabase
-        .from('profiles').select('user_id').eq('user_id', userId).eq('role', 'mower').limit(1);
-      if (mowerProfile && mowerProfile.length > 0) continue;
+      const { data: profile } = await supabase
+        .from('profiles').select('signup_reminder_sent, role').eq('user_id', userId).limit(1);
+      if (!profile || profile.length === 0) continue;
+      if (profile[0].signup_reminder_sent) continue;
+      if (profile[0].role === 'mower') continue;
 
-      // Skip if they've posted any jobs
       const { data: jobs } = await supabase
         .from('jobs').select('id').eq('user_id', userId).limit(1);
       if (jobs && jobs.length > 0) continue;
 
-      // Send the reminder
       const token = await getPushToken(userId);
-      if (!token) continue;
+      if (token) {
+        await sendPush(token, '🌿 Ready to get your lawn done?', 'Post a job and get bids from local mowers in minutes.');
+        console.log(`[signup-reminder] Sent to userId=${userId}`);
+        sent++;
+      }
 
-      await sendPush(
-        token,
-        '🌿 Ready to get your lawn done?',
-        'Post a job and get bids from local mowers in minutes.'
-      );
-      console.log(`[signup-reminder] Sent to userId=${userId}`);
+      await supabase.from('profiles').update({ signup_reminder_sent: true }).eq('user_id', userId);
     }
 
-    console.log(`Signup reminder run complete. Checked ${candidates.length} candidate(s).`);
+    console.log(`Signup reminder run complete. Sent ${sent} reminder(s).`);
   } catch (err) {
     console.error('sendSignupReminders error:', err.message);
   }
