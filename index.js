@@ -381,5 +381,59 @@ async function autoCapturePastDue() {
 // Run auto-capture every hour
 cron.schedule('0 * * * *', autoCapturePastDue);
 
+// ── Signup reminder cron (runs daily at 11:00 AM UTC) ────────────────────────
+// Sends one push to homeowners who signed up ~24hrs ago, haven't posted a job,
+// and are not registered as a mower.
+async function sendSignupReminders() {
+  console.log('Running signup reminders...');
+  const now = new Date();
+  const from = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString(); // 25hrs ago
+  const to   = new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString(); // 23hrs ago
+
+  try {
+    // Find auth users who signed up in the 23–25hr window
+    const { data: usersPage, error: authErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    if (authErr) { console.error('signup-reminder auth list error:', authErr.message); return; }
+
+    const candidates = (usersPage?.users ?? []).filter(u => {
+      const created = u.created_at;
+      return created >= from && created <= to;
+    });
+
+    if (candidates.length === 0) { console.log('No signup-reminder candidates.'); return; }
+
+    for (const user of candidates) {
+      const userId = user.id;
+
+      // Skip if registered as a mower
+      const { data: mowerProfile } = await supabase
+        .from('profiles').select('user_id').eq('user_id', userId).eq('role', 'mower').limit(1);
+      if (mowerProfile && mowerProfile.length > 0) continue;
+
+      // Skip if they've posted any jobs
+      const { data: jobs } = await supabase
+        .from('jobs').select('id').eq('user_id', userId).limit(1);
+      if (jobs && jobs.length > 0) continue;
+
+      // Send the reminder
+      const token = await getPushToken(userId);
+      if (!token) continue;
+
+      await sendPush(
+        token,
+        '🌿 Ready to get your lawn done?',
+        'Post a job and get bids from local mowers in minutes.'
+      );
+      console.log(`[signup-reminder] Sent to userId=${userId}`);
+    }
+
+    console.log(`Signup reminder run complete. Checked ${candidates.length} candidate(s).`);
+  } catch (err) {
+    console.error('sendSignupReminders error:', err.message);
+  }
+}
+
+cron.schedule('0 11 * * *', sendSignupReminders);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CutConnect server running on port ${PORT}`));
