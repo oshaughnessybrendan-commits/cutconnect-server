@@ -482,7 +482,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
     const profiles = profilesRes.data || [];
     const totalMowers = profiles.filter(p => p.role === 'mower').length;
     const totalHomeowners = profiles.filter(p => p.role === 'homeowner').length;
-    const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true })).count ?? 0;
+    const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true }).neq('status', 'cancelled')).count ?? 0;
     const totalBids = (await supabase.from('bids').select('id', { count: 'exact', head: true })).count ?? 0;
     const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true }).eq('status', 'paid')).count ?? 0;
 
