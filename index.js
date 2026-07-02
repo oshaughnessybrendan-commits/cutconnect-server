@@ -427,5 +427,180 @@ async function sendSignupReminders() {
 
 cron.schedule('0 11 * * *', sendSignupReminders);
 
+// ── Admin dashboard ───────────────────────────────────────────────────────────
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'cutconnect2024';
+
+function requireAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  if (auth) {
+    const [type, creds] = auth.split(' ');
+    if (type === 'Basic') {
+      const [, pass] = Buffer.from(creds, 'base64').toString().split(':');
+      if (pass === ADMIN_PASSWORD) return next();
+    }
+  }
+  res.set('WWW-Authenticate', 'Basic realm="CutConnect Admin"');
+  res.status(401).send('Unauthorized');
+}
+
+app.get('/admin/data', requireAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || '30');
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const [jobsRes, bidsRes, hiresRes, profilesRes, usersRes] = await Promise.all([
+      supabase.from('jobs').select('created_at, status').gte('created_at', since),
+      supabase.from('bids').select('created_at').gte('created_at', since),
+      supabase.from('hires').select('created_at, status').gte('created_at', since),
+      supabase.from('profiles').select('role, created_at'),
+      supabase.auth.admin.listUsers({ perPage: 1000 }),
+    ]);
+
+    const users = usersRes.data?.users ?? [];
+    const totalUsers = users.length;
+    const recentUsers = users.filter(u => u.created_at >= since);
+
+    // Group by day helper
+    const byDay = (rows, field = 'created_at') => {
+      const map = {};
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
+        map[d] = 0;
+      }
+      (rows || []).forEach(r => {
+        const d = (r[field] || '').split('T')[0];
+        if (map[d] !== undefined) map[d]++;
+      });
+      return map;
+    };
+
+    const signupsByDay = byDay(recentUsers);
+    const jobsByDay = byDay(jobsRes.data);
+    const bidsByDay = byDay(bidsRes.data);
+    const hiresByDay = byDay(hiresRes.data);
+
+    const profiles = profilesRes.data || [];
+    const totalMowers = profiles.filter(p => p.role === 'mower').length;
+    const totalHomeowners = profiles.filter(p => p.role === 'homeowner').length;
+    const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true })).count ?? 0;
+    const totalBids = (await supabase.from('bids').select('id', { count: 'exact', head: true })).count ?? 0;
+    const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true })).count ?? 0;
+    const paidHires = (hiresRes.data || []).filter(h => h.status === 'paid').length;
+
+    // Recent signups
+    const recentSignups = users
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 20)
+      .map(u => ({ email: u.email, created_at: u.created_at }));
+
+    res.json({
+      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, paidHires },
+      charts: { signupsByDay, jobsByDay, bidsByDay, hiresByDay },
+      recentSignups,
+    });
+  } catch (err) {
+    console.error('admin/data error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CutConnect Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f7f4; color: #1a1a1a; padding: 24px; }
+    h1 { color: #2D6A2D; margin-bottom: 4px; }
+    .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
+    .range-btns { display: flex; gap: 8px; margin-bottom: 24px; }
+    .range-btn { padding: 6px 16px; border-radius: 20px; border: 1px solid #2D6A2D; background: #fff; color: #2D6A2D; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .range-btn.active { background: #2D6A2D; color: #fff; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .card-val { font-size: 32px; font-weight: 700; color: #2D6A2D; }
+    .card-label { font-size: 12px; color: #888; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    @media (max-width: 700px) { .charts { grid-template-columns: 1fr; } }
+    .chart-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .chart-box h3 { font-size: 14px; color: #555; margin-bottom: 16px; }
+    .table-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .table-box h3 { font-size: 14px; color: #555; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: #888; font-weight: 600; padding: 6px 0; border-bottom: 1px solid #eee; }
+    td { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .loading { text-align: center; padding: 60px; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>🌿 CutConnect Admin</h1>
+  <p class="subtitle">Last updated: <span id="updated">loading...</span></p>
+
+  <div class="range-btns">
+    <button class="range-btn active" onclick="load(7, this)">7 days</button>
+    <button class="range-btn" onclick="load(30, this)">30 days</button>
+    <button class="range-btn" onclick="load(90, this)">90 days</button>
+  </div>
+
+  <div class="cards" id="cards"><div class="loading">Loading...</div></div>
+  <div class="charts">
+    <div class="chart-box"><h3>New Signups</h3><canvas id="signupsChart"></canvas></div>
+    <div class="chart-box"><h3>Jobs Posted</h3><canvas id="jobsChart"></canvas></div>
+    <div class="chart-box"><h3>Bids Placed</h3><canvas id="bidsChart"></canvas></div>
+    <div class="chart-box"><h3>Hires Created</h3><canvas id="hiresChart"></canvas></div>
+  </div>
+  <div class="table-box">
+    <h3>Recent Signups</h3>
+    <table><thead><tr><th>Email</th><th>Signed Up</th></tr></thead><tbody id="signupTable"></tbody></table>
+  </div>
+
+  <script>
+    const charts = {};
+    function makeChart(id, labels, data, color) {
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), {
+        type: 'bar',
+        data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 4, borderSkipped: false }] },
+        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 7, font: { size: 10 } } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+      });
+    }
+    async function load(days, btn) {
+      document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      const res = await fetch('/admin/data?days=' + days);
+      const d = await res.json();
+      const { totals, charts: c, recentSignups } = d;
+
+      document.getElementById('cards').innerHTML = [
+        ['Total Users', totals.totalUsers],
+        ['Mowers', totals.totalMowers],
+        ['Homeowners', totals.totalHomeowners],
+        ['Jobs Posted', totals.totalJobs],
+        ['Bids Placed', totals.totalBids],
+        ['Hires', totals.totalHires],
+        ['Paid (period)', totals.paidHires],
+      ].map(([label, val]) => \`<div class="card"><div class="card-val">\${val}</div><div class="card-label">\${label}</div></div>\`).join('');
+
+      const labels = obj => Object.keys(obj).map(d => d.slice(5));
+      const vals = obj => Object.values(obj);
+      makeChart('signupsChart', labels(c.signupsByDay), vals(c.signupsByDay), '#2D6A2D');
+      makeChart('jobsChart', labels(c.jobsByDay), vals(c.jobsByDay), '#4CAF50');
+      makeChart('bidsChart', labels(c.bidsByDay), vals(c.bidsByDay), '#F59E0B');
+      makeChart('hiresChart', labels(c.hiresByDay), vals(c.hiresByDay), '#3B82F6');
+
+      document.getElementById('signupTable').innerHTML = recentSignups.map(u =>
+        \`<tr><td>\${u.email}</td><td>\${new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td></tr>\`
+      ).join('');
+
+      document.getElementById('updated').textContent = new Date().toLocaleTimeString();
+    }
+    load(7);
+  </script>
+</body>
+</html>`));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CutConnect server running on port ${PORT}`));
