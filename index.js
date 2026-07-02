@@ -491,6 +491,21 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
       return sum + (isNaN(amt) ? 0 : amt);
     }, 0);
 
+    // Scheduled payouts: active hires not yet paid, accounting for remaining recurring visits
+    const { data: activeHires } = await supabase
+      .from('hires')
+      .select('bid_amount, total_visits, visit_number, status')
+      .in('status', ['requested', 'awaiting_payment', 'scheduled', 'complete']);
+    const scheduledPayout = (activeHires || []).reduce((sum, h) => {
+      const amt = parseFloat((h.bid_amount || '0').replace(/[^0-9.]/g, ''));
+      if (isNaN(amt)) return sum;
+      const totalVisits = h.total_visits || 1;
+      const visitNumber = h.visit_number || 1;
+      // complete = current visit earned but unpaid (1 visit); scheduled = remaining visits including current
+      const remainingVisits = h.status === 'complete' ? 1 : Math.max(1, totalVisits - visitNumber + 1);
+      return sum + (amt * remainingVisits);
+    }, 0);
+
     // Recent signups
     const recentSignups = users
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -498,7 +513,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
       .map(u => ({ email: u.email, created_at: u.created_at }));
 
     res.json({
-      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, totalPayout },
+      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, totalPayout, scheduledPayout },
       charts: { signupsByDay, jobsByDay, bidsByDay, hiresByDay },
       recentSignups,
     });
@@ -586,6 +601,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
         ['Bids Placed', totals.totalBids],
         ['Paid Hires', totals.totalHires],
         ['Total Paid Out', \`$\${totals.totalPayout.toFixed(2)}\`],
+        ['Scheduled Payouts', \`$\${totals.scheduledPayout.toFixed(2)}\`],
       ].map(([label, val]) => \`<div class="card"><div class="card-val">\${val}</div><div class="card-label">\${label}</div></div>\`).join('');
 
       const labels = obj => Object.keys(obj).map(d => d.slice(5));
