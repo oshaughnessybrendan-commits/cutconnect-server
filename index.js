@@ -485,6 +485,11 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
     const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true }).neq('status', 'cancelled')).count ?? 0;
     const totalBids = (await supabase.from('bids').select('id', { count: 'exact', head: true })).count ?? 0;
     const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true }).eq('status', 'paid')).count ?? 0;
+    const { data: paidHireAmounts } = await supabase.from('hires').select('bid_amount').eq('status', 'paid');
+    const totalPayout = (paidHireAmounts || []).reduce((sum, h) => {
+      const amt = parseFloat((h.bid_amount || '0').replace(/[^0-9.]/g, ''));
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
 
     // Recent signups
     const recentSignups = users
@@ -493,7 +498,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
       .map(u => ({ email: u.email, created_at: u.created_at }));
 
     res.json({
-      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires },
+      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, totalPayout },
       charts: { signupsByDay, jobsByDay, bidsByDay, hiresByDay },
       recentSignups,
     });
@@ -563,7 +568,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
       charts[id] = new Chart(document.getElementById(id), {
         type: 'bar',
         data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 4, borderSkipped: false }] },
-        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 7, font: { size: 10 } } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 7, font: { size: 10 } } }, y: { beginAtZero: true, min: 0, max: Math.max(5, Math.max(...data)), ticks: { stepSize: 1, precision: 0 } } } }
       });
     }
     async function load(days, btn) {
@@ -580,6 +585,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
         ['Jobs Posted', totals.totalJobs],
         ['Bids Placed', totals.totalBids],
         ['Paid Hires', totals.totalHires],
+        ['Total Paid Out', \`$\${totals.totalPayout.toFixed(2)}\`],
       ].map(([label, val]) => \`<div class="card"><div class="card-val">\${val}</div><div class="card-label">\${label}</div></div>\`).join('');
 
       const labels = obj => Object.keys(obj).map(d => d.slice(5));
