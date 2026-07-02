@@ -569,7 +569,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
     <div class="chart-box"><h3>New Signups</h3><canvas id="signupsChart"></canvas></div>
     <div class="chart-box"><h3>Jobs Posted</h3><canvas id="jobsChart"></canvas></div>
     <div class="chart-box"><h3>Bids Placed</h3><canvas id="bidsChart"></canvas></div>
-    <div class="chart-box"><h3>Hires Created</h3><canvas id="hiresChart"></canvas></div>
+    <div class="chart-box"><h3>New Hire Requests</h3><canvas id="hiresChart"></canvas></div>
   </div>
   <div class="table-box">
     <h3>Recent Signups</h3>
