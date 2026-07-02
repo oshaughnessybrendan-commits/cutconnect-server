@@ -484,8 +484,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
     const totalHomeowners = profiles.filter(p => p.role === 'homeowner').length;
     const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true })).count ?? 0;
     const totalBids = (await supabase.from('bids').select('id', { count: 'exact', head: true })).count ?? 0;
-    const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true })).count ?? 0;
-    const totalPaid = (await supabase.from('hires').select('id', { count: 'exact', head: true }).eq('status', 'paid')).count ?? 0;
+    const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true }).eq('status', 'paid')).count ?? 0;
 
     // Recent signups
     const recentSignups = users
@@ -494,7 +493,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
       .map(u => ({ email: u.email, created_at: u.created_at }));
 
     res.json({
-      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, totalPaid },
+      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires },
       charts: { signupsByDay, jobsByDay, bidsByDay, hiresByDay },
       recentSignups,
     });
@@ -580,8 +579,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
         ['Homeowners', totals.totalHomeowners],
         ['Jobs Posted', totals.totalJobs],
         ['Bids Placed', totals.totalBids],
-        ['Hires', totals.totalHires],
-        ['Paid Hires', totals.totalPaid],
+        ['Paid Hires', totals.totalHires],
       ].map(([label, val]) => \`<div class="card"><div class="card-val">\${val}</div><div class="card-label">\${label}</div></div>\`).join('');
 
       const labels = obj => Object.keys(obj).map(d => d.slice(5));
