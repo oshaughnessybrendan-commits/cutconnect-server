@@ -449,7 +449,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     const [jobsRes, bidsRes, hiresRes, profilesRes, usersRes] = await Promise.all([
-      supabase.from('jobs').select('created_at, status').gte('created_at', since),
+      supabase.from('jobs').select('created_at, status').gte('created_at', since).neq('status', 'cancelled'),
       supabase.from('bids').select('created_at').gte('created_at', since),
       supabase.from('hires').select('created_at, status').gte('created_at', since),
       supabase.from('profiles').select('role, created_at'),
