@@ -485,7 +485,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
     const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true })).count ?? 0;
     const totalBids = (await supabase.from('bids').select('id', { count: 'exact', head: true })).count ?? 0;
     const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true })).count ?? 0;
-    const paidHires = (hiresRes.data || []).filter(h => h.status === 'paid').length;
+    const totalPaid = (await supabase.from('hires').select('id', { count: 'exact', head: true }).eq('status', 'paid')).count ?? 0;
 
     // Recent signups
     const recentSignups = users
@@ -494,7 +494,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
       .map(u => ({ email: u.email, created_at: u.created_at }));
 
     res.json({
-      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, paidHires },
+      totals: { totalUsers, totalMowers, totalHomeowners, totalJobs, totalBids, totalHires, totalPaid },
       charts: { signupsByDay, jobsByDay, bidsByDay, hiresByDay },
       recentSignups,
     });
@@ -581,7 +581,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
         ['Jobs Posted', totals.totalJobs],
         ['Bids Placed', totals.totalBids],
         ['Hires', totals.totalHires],
-        ['Paid (period)', totals.paidHires],
+        ['Paid Hires', totals.totalPaid],
       ].map(([label, val]) => \`<div class="card"><div class="card-val">\${val}</div><div class="card-label">\${label}</div></div>\`).join('');
 
       const labels = obj => Object.keys(obj).map(d => d.slice(5));
