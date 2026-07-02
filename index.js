@@ -452,7 +452,7 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
       supabase.from('jobs').select('created_at, status').gte('created_at', since).neq('status', 'cancelled'),
       supabase.from('bids').select('created_at').gte('created_at', since),
       supabase.from('hires').select('created_at, status').gte('created_at', since),
-      supabase.from('profiles').select('role, created_at'),
+      supabase.from('profiles').select('user_id, role, created_at'),
       supabase.auth.admin.listUsers({ perPage: 1000 }),
     ]);
 
@@ -480,8 +480,8 @@ app.get('/admin/data', requireAdmin, async (req, res) => {
     const hiresByDay = byDay(hiresRes.data);
 
     const profiles = profilesRes.data || [];
-    const totalMowers = profiles.filter(p => p.role === 'mower').length;
-    const totalHomeowners = profiles.filter(p => p.role === 'homeowner').length;
+    const totalMowers = new Set(profiles.filter(p => p.role === 'mower').map(p => p.user_id)).size;
+    const totalHomeowners = new Set(profiles.filter(p => p.role === 'homeowner').map(p => p.user_id)).size;
     const totalJobs = (await supabase.from('jobs').select('id', { count: 'exact', head: true }).neq('status', 'cancelled')).count ?? 0;
     const totalBids = (await supabase.from('bids').select('id', { count: 'exact', head: true })).count ?? 0;
     const totalHires = (await supabase.from('hires').select('id', { count: 'exact', head: true }).eq('status', 'paid')).count ?? 0;
