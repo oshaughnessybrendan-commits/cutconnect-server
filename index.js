@@ -81,9 +81,12 @@ app.post('/capture-payment', async (req, res) => {
           // Stripe automatically splits on capture via application_fee_amount + transfer_data
           // set during authorization — no manual transfer needed
           const payoutAmt = (rawAmt * 0.9).toFixed(2);
+          const feeCents = (rawAmt * 0.10).toFixed(2);
           console.log(`[payout] Stripe auto-split on capture — mower gets $${payoutAmt}`);
           const mowerToken = await getPushToken(hire.mower_id);
           await sendPush(mowerToken, '💰 You\'ve been paid!', `$${payoutAmt} has been transferred to your bank account via Stripe.`);
+          const adminToken = await getPushToken(ADMIN_USER_ID);
+          await sendPush(adminToken, '💰 Payment Received', `${mower.name} was paid $${payoutAmt} via Stripe. Your fee: $${feeCents}.`);
         } else if (mower?.payout_method === 'venmo' || mower?.payout_method === 'zelle') {
           // Notify Brendan to manually pay the mower
           const adminToken = await getPushToken(ADMIN_USER_ID);
