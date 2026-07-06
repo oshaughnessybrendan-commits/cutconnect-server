@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const cron = require('node-cron');
@@ -558,7 +558,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>ðŸŒ¿ CutConnect Admin</h1>
+  <h1>🌿 CutConnect Admin</h1>
   <p class="subtitle">Last updated: <span id="updated">loading...</span></p>
 
   <div class="range-btns">
