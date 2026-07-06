@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const cron = require('node-cron');
@@ -10,10 +10,10 @@ app.use(express.json());
 
 const supabase = createClient(process.env.DB_URL, process.env.DB_SERVICE_KEY);
 
-// Brendan's user ID — receives manual payout notifications
+// Brendan's user ID â€” receives manual payout notifications
 const ADMIN_USER_ID = '372a2db2-1ad3-40f7-b44c-56def200bf66';
 
-// ── Stripe: create payment intent (immediate charge flow) ──────────────────────
+// â”€â”€ Stripe: create payment intent (immediate charge flow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/create-payment-intent', async (req, res) => {
   try {
     const { amount, currency = 'usd' } = req.body;
@@ -29,7 +29,7 @@ app.post('/create-payment-intent', async (req, res) => {
   }
 });
 
-// ── Stripe: authorize only (capture_method: manual) ───────────────────────────
+// â”€â”€ Stripe: authorize only (capture_method: manual) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/authorize-payment', async (req, res) => {
   try {
     const { amount, currency = 'usd', mowerId } = req.body;
@@ -61,7 +61,7 @@ app.post('/authorize-payment', async (req, res) => {
   }
 });
 
-// ── Stripe: capture + auto payout ────────────────────────────────────────────
+// â”€â”€ Stripe: capture + auto payout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/capture-payment', async (req, res) => {
   try {
     const { paymentIntentId, hireId } = req.body;
@@ -79,14 +79,14 @@ app.post('/capture-payment', async (req, res) => {
 
         if (mower?.payout_method === 'stripe' && mower?.stripe_connect_id) {
           // Stripe automatically splits on capture via application_fee_amount + transfer_data
-          // set during authorization — no manual transfer needed
+          // set during authorization â€” no manual transfer needed
           const payoutAmt = (rawAmt * 0.9).toFixed(2);
           const feeCents = (rawAmt * 0.10).toFixed(2);
-          console.log(`[payout] Stripe auto-split on capture — mower gets $${payoutAmt}`);
+          console.log(`[payout] Stripe auto-split on capture â€” mower gets $${payoutAmt}`);
           const mowerToken = await getPushToken(hire.mower_id);
-          await sendPush(mowerToken, '💰 You\'ve been paid!', `$${payoutAmt} has been transferred to your bank account via Stripe.`);
+          await sendPush(mowerToken, 'ðŸ’° You\'ve been paid!', `$${payoutAmt} has been transferred to your bank account via Stripe.`);
           const adminToken = await getPushToken(ADMIN_USER_ID);
-          await sendPush(adminToken, '💰 Payment Received', `${mower.name} was paid $${payoutAmt} via Stripe. Your fee: $${feeCents}.`);
+          await sendPush(adminToken, 'ðŸ’° Payment Received', `${mower.name} was paid $${payoutAmt} via Stripe. Your fee: $${feeCents}.`);
         } else if (mower?.payout_method === 'venmo' || mower?.payout_method === 'zelle') {
           // Notify Brendan to manually pay the mower
           const adminToken = await getPushToken(ADMIN_USER_ID);
@@ -96,13 +96,13 @@ app.post('/capture-payment', async (req, res) => {
             : `Zelle: ${mower.zelle_info || 'not set'}`;
           await sendPush(
             adminToken,
-            '💰 Manual Payout Needed',
+            'ðŸ’° Manual Payout Needed',
             `Pay ${mower.name} $${payoutAmt} via ${payoutInfo}`
           );
-          console.log(`[payout] Manual payout alert sent — ${mower.name} $${payoutAmt} via ${mower.payout_method}`);
+          console.log(`[payout] Manual payout alert sent â€” ${mower.name} $${payoutAmt} via ${mower.payout_method}`);
           // Still notify mower job is paid
           const mowerToken = await getPushToken(hire.mower_id);
-          await sendPush(mowerToken, '💰 Payment Received!', `Your payment of $${rawAmt.toFixed(2)} is on its way via ${mower.payout_method}.`);
+          await sendPush(mowerToken, 'ðŸ’° Payment Received!', `Your payment of $${rawAmt.toFixed(2)} is on its way via ${mower.payout_method}.`);
         }
       }
     }
@@ -114,7 +114,7 @@ app.post('/capture-payment', async (req, res) => {
   }
 });
 
-// ── Stripe: cancel an authorization ──────────────────────────────────────────
+// â”€â”€ Stripe: cancel an authorization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/cancel-authorization', async (req, res) => {
   try {
     const { paymentIntentId } = req.body;
@@ -126,7 +126,7 @@ app.post('/cancel-authorization', async (req, res) => {
   }
 });
 
-// ── Stripe Connect: create account + return onboarding URL ───────────────────
+// â”€â”€ Stripe Connect: create account + return onboarding URL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/create-connect-account', async (req, res) => {
   try {
     const { mowerId } = req.body;
@@ -161,7 +161,7 @@ app.post('/create-connect-account', async (req, res) => {
   }
 });
 
-// ── Stripe Connect: check account status ─────────────────────────────────────
+// â”€â”€ Stripe Connect: check account status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/connect-status', async (req, res) => {
   try {
     const { accountId } = req.body;
@@ -177,7 +177,7 @@ app.post('/connect-status', async (req, res) => {
   }
 });
 
-// ── Expo push notification helper ─────────────────────────────────────────────
+// â”€â”€ Expo push notification helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function sendPush(token, title, body) {
   if (!token) return;
   try {
@@ -206,7 +206,7 @@ async function getPushToken(userId) {
   return data?.[0]?.push_token ?? null;
 }
 
-// ── Send notification endpoint ────────────────────────────────────────────────
+// â”€â”€ Send notification endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/send-notification', async (req, res) => {
   try {
     const { token: rawToken, userId, title, body } = req.body;
@@ -216,7 +216,7 @@ app.post('/send-notification', async (req, res) => {
       console.log(`[notify] userId=${userId} token=${token ?? 'NOT FOUND'}`);
     }
     if (!token) {
-      console.warn(`[notify] No push token — title="${title}"`);
+      console.warn(`[notify] No push token â€” title="${title}"`);
       return res.json({ success: false, reason: 'no_token' });
     }
     await sendPush(token, title, body);
@@ -227,7 +227,7 @@ app.post('/send-notification', async (req, res) => {
   }
 });
 
-// ── Mark messages as read (bypasses RLS using service key) ───────────────────
+// â”€â”€ Mark messages as read (bypasses RLS using service key) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/mark-messages-read', async (req, res) => {
   try {
     const { receiverId, senderId } = req.body;
@@ -243,7 +243,7 @@ app.post('/mark-messages-read', async (req, res) => {
   }
 });
 
-// ── Delete account ────────────────────────────────────────────────────────────
+// â”€â”€ Delete account â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/delete-account', async (req, res) => {
   try {
     const { userId } = req.body;
@@ -264,7 +264,7 @@ app.post('/delete-account', async (req, res) => {
   }
 });
 
-// ── Account deletion request page ────────────────────────────────────────────
+// â”€â”€ Account deletion request page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/delete-account', (req, res) => res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -281,15 +281,15 @@ app.get('/delete-account', (req, res) => res.send(`<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>🌿 Delete Your CutConnect Account</h1>
+  <h1>ðŸŒ¿ Delete Your CutConnect Account</h1>
   <p>You can delete your account directly inside the CutConnect app:</p>
   <div class="card">
     <strong>In the app:</strong>
     <ol style="margin-top:8px; padding-left:20px; line-height:2;">
       <li>Open CutConnect</li>
-      <li>Tap the <strong>⚙️ Settings</strong> icon (top right)</li>
+      <li>Tap the <strong>âš™ï¸ Settings</strong> icon (top right)</li>
       <li>Scroll down and tap <strong>Delete Account</strong></li>
-      <li>Confirm — your account and all data will be permanently deleted</li>
+      <li>Confirm â€” your account and all data will be permanently deleted</li>
     </ol>
   </div>
   <p style="margin-top:24px;">If you no longer have access to the app, email us at <a href="mailto:oshaughnessy.brendan@gmail.com">oshaughnessy.brendan@gmail.com</a> with the subject line <strong>"Account Deletion Request"</strong> and include the email address associated with your account. We will delete it within 7 days.</p>
@@ -297,14 +297,14 @@ app.get('/delete-account', (req, res) => res.send(`<!DOCTYPE html>
 </body>
 </html>`));
 
-// ── Stripe Connect redirect pages ─────────────────────────────────────────────
+// â”€â”€ Stripe Connect redirect pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/stripe-return', (req, res) => res.send('<html><body><h2>Bank account setup complete! Return to the CutConnect app.</h2></body></html>'));
 app.get('/stripe-refresh', (req, res) => res.send('<html><body><h2>Session expired. Please return to CutConnect and try again.</h2></body></html>'));
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// â”€â”€ Health check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// ── Daily reminder cron (runs every day at 10:00 AM UTC) ──────────────────────
+// â”€â”€ Daily reminder cron (runs every day at 10:00 AM UTC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function sendDailyReminders() {
   console.log('Running daily hire reminders...');
   const now = new Date();
@@ -323,17 +323,17 @@ async function sendDailyReminders() {
     for (const hire of hires) {
       if (hire.status === 'requested') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(token, '⏳ Still waiting on your mower',
+        await sendPush(token, 'â³ Still waiting on your mower',
           `${hire.mower_name} hasn't responded to your hire request yet. You can follow up or cancel in the app.`);
       }
       if (hire.status === 'awaiting_payment') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(token, '💳 Action needed — authorize payment',
+        await sendPush(token, 'ðŸ’³ Action needed â€” authorize payment',
           `${hire.mower_name} accepted your job! Open CutConnect to authorize your card and confirm the booking.`);
       }
       if (hire.status === 'complete') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(token, '💰 Please pay your mower',
+        await sendPush(token, 'ðŸ’° Please pay your mower',
           `${hire.mower_name} completed your lawn job over 24 hours ago. Open CutConnect to submit payment.`);
       }
     }
@@ -346,7 +346,7 @@ async function sendDailyReminders() {
 
 cron.schedule('0 10 * * *', sendDailyReminders);
 
-// ── Auto-capture payments 48hrs after job marked complete ─────────────────────
+// â”€â”€ Auto-capture payments 48hrs after job marked complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function autoCapturePastDue() {
   console.log('Running auto-capture check...');
   const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -362,16 +362,16 @@ async function autoCapturePastDue() {
     if (!hires || hires.length === 0) { console.log('No past-due payments found.'); return; }
     for (const hire of hires) {
       try {
-        console.log(`[auto-capture] Capturing payment for hire ${hire.id} — ${hire.bid_amount}`);
+        console.log(`[auto-capture] Capturing payment for hire ${hire.id} â€” ${hire.bid_amount}`);
         await stripe.paymentIntents.capture(hire.payment_intent_id);
         await supabase.from('hires').update({ status: 'paid' }).eq('id', hire.id);
         if (hire.job_id) await supabase.from('jobs').update({ status: 'paid' }).eq('id', hire.job_id);
         // Notify both parties
         const mowerToken = await getPushToken(hire.mower_id);
-        await sendPush(mowerToken, '💰 Payment Received!', `Your payment of ${hire.bid_amount} has been automatically processed.`);
+        await sendPush(mowerToken, 'ðŸ’° Payment Received!', `Your payment of ${hire.bid_amount} has been automatically processed.`);
         const homeownerToken = await getPushToken(hire.homeowner_id);
-        await sendPush(homeownerToken, '💳 Payment Processed', `Your payment of ${hire.bid_amount} to ${hire.mower_name} has been automatically processed.`);
-        console.log(`[auto-capture] Success — hire ${hire.id}`);
+        await sendPush(homeownerToken, 'ðŸ’³ Payment Processed', `Your payment of ${hire.bid_amount} to ${hire.mower_name} has been automatically processed.`);
+        console.log(`[auto-capture] Success â€” hire ${hire.id}`);
       } catch (err) {
         console.error(`[auto-capture] Failed for hire ${hire.id}:`, err.message);
       }
@@ -384,7 +384,7 @@ async function autoCapturePastDue() {
 // Run auto-capture every hour
 cron.schedule('0 * * * *', autoCapturePastDue);
 
-// ── Signup reminder cron (runs daily at 11:00 AM UTC) ────────────────────────
+// â”€â”€ Signup reminder cron (runs daily at 11:00 AM UTC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Sends one push to homeowners who signed up ~24hrs ago, haven't posted a job,
 // and are not registered as a mower.
 async function sendSignupReminders() {
@@ -414,7 +414,7 @@ async function sendSignupReminders() {
 
       const token = await getPushToken(userId);
       if (token) {
-        await sendPush(token, '🌿 Ready to get your lawn done?', 'Post a job and get bids from local mowers in minutes.');
+        await sendPush(token, 'ðŸŒ¿ Ready to get your lawn done?', 'Post a job and get bids from local mowers in minutes.');
         console.log(`[signup-reminder] Sent to userId=${userId}`);
         sent++;
       }
@@ -430,7 +430,7 @@ async function sendSignupReminders() {
 
 cron.schedule('0 11 * * *', sendSignupReminders);
 
-// ── Admin dashboard ───────────────────────────────────────────────────────────
+// â”€â”€ Admin dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'cutconnect2024';
 
 function requireAdmin(req, res, next) {
@@ -558,7 +558,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>🌿 CutConnect Admin</h1>
+  <h1>ðŸŒ¿ CutConnect Admin</h1>
   <p class="subtitle">Last updated: <span id="updated">loading...</span></p>
 
   <div class="range-btns">
@@ -604,7 +604,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
         ['Bids Placed', totals.totalBids],
         ['Paid Hires', totals.totalHires],
         ['Total Paid Out', \`$\${totals.totalPayout.toFixed(2)}\`],
-        ['Scheduled Payouts', \`$\${totals.scheduledPayout.toFixed(2)}\`],
+        ['Projected Payouts', \`$\${totals.scheduledPayout.toFixed(2)}\`],
       ].map(([label, val]) => \`<div class="card"><div class="card-val">\${val}</div><div class="card-label">\${label}</div></div>\`).join('');
 
       const labels = obj => Object.keys(obj).map(d => d.slice(5));
@@ -627,3 +627,4 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CutConnect server running on port ${PORT}`));
+
