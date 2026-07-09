@@ -198,8 +198,41 @@ async function sendPush(token, title, body) {
   }
 }
 
+// Build branded HTML email
+function buildEmailHtml(title, body, ctaText = 'Open CutConnect') {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f7f9f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f7f9f7;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.07);">
+        <tr><td style="background:#2D6A2D;padding:24px 32px;">
+          <div style="font-size:22px;font-weight:800;color:#ffffff;">🌿 CutConnect</div>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <h2 style="margin:0 0 12px;font-size:20px;color:#1b2a1b;">${title}</h2>
+          <p style="margin:0 0 24px;font-size:15px;color:#4a5e4a;line-height:1.6;">${body}</p>
+          <a href="https://apps.apple.com/th/app/cutconnect-lawn-marketplace/id6764613000"
+             style="display:inline-block;background:#2D6A2D;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:24px;">
+            ${ctaText} →
+          </a>
+        </td></tr>
+        <tr><td style="padding:16px 32px 28px;border-top:1px solid #e8f0e8;">
+          <p style="margin:0;font-size:12px;color:#90a4ae;line-height:1.5;">
+            You're receiving this because you have an active job posted on CutConnect.<br>
+            Questions? Email <a href="mailto:cutconnect.support@gmail.com" style="color:#2D6A2D;">cutconnect.support@gmail.com</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 // Send email to a homeowner (best-effort, never throws)
-async function sendEmailToUser(userId, subject, html) {
+async function sendEmailToUser(userId, subject, bodyText) {
   try {
     const { data: profile } = await supabase
       .from('profiles')
@@ -215,7 +248,7 @@ async function sendEmailToUser(userId, subject, html) {
       from: 'CutConnect <notifications@mycutconnect.com>',
       to: email,
       subject,
-      html,
+      html: buildEmailHtml(subject.replace('CutConnect — ', ''), bodyText),
     });
     console.log(`[email] Sent "${subject}" to ${email}`);
   } catch (err) {
