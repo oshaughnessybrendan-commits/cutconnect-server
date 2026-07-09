@@ -3,6 +3,9 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const cron = require('node-cron');
 const { createClient } = require('@supabase/supabase-js');
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const app = express();
 app.use(cors());
@@ -195,6 +198,31 @@ async function sendPush(token, title, body) {
   }
 }
 
+// Send email to a homeowner (best-effort, never throws)
+async function sendEmailToUser(userId, subject, html) {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('user_id', userId)
+      .limit(1)
+      .single();
+    if (!profile || profile.role !== 'homeowner') return;
+    const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+    const email = authUser?.user?.email;
+    if (!email) return;
+    await resend.emails.send({
+      from: 'CutConnect <notifications@cutconnect.app>',
+      to: email,
+      subject,
+      html,
+    });
+    console.log(`[email] Sent "${subject}" to ${email}`);
+  } catch (err) {
+    console.error('[email] Failed to send email:', err.message);
+  }
+}
+
 // Lookup push token for a user (handles users with multiple profile rows)
 async function getPushToken(userId) {
   const { data } = await supabase
@@ -215,8 +243,12 @@ app.post('/send-notification', async (req, res) => {
       token = await getPushToken(userId);
       console.log(`[notify] userId=${userId} token=${token ?? 'NOT FOUND'}`);
     }
+    // Send email to homeowners regardless of push token
+    if (userId) {
+      await sendEmailToUser(userId, title, `<p>${body}</p><p style=”margin-top:16px;font-size:13px;color:#666;”>Open the <a href=”https://apps.apple.com/th/app/cutconnect-lawn-marketplace/id6764613000”>CutConnect app</a> to respond.</p>`);
+    }
     if (!token) {
-      console.warn(`[notify] No push token â€” title="${title}"`);
+      console.warn(`[notify] No push token — title=”${title}”`);
       return res.json({ success: false, reason: 'no_token' });
     }
     await sendPush(token, title, body);
