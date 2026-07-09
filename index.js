@@ -248,6 +248,7 @@ async function sendEmailToUser(userId, subject, bodyText) {
     if (!email) return;
     await resend.emails.send({
       from: 'CutConnect <notifications@mycutconnect.com>',
+      reply_to: 'cutconnect.support@gmail.com',
       to: email,
       subject,
       html: buildEmailHtml(subject.replace('CutConnect — ', ''), bodyText),
