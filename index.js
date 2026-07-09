@@ -221,7 +221,8 @@ function buildEmailHtml(title, body, ctaText = 'Open CutConnect') {
         <tr><td style="padding:16px 32px 28px;border-top:1px solid #e8f0e8;">
           <p style="margin:0;font-size:12px;color:#90a4ae;line-height:1.5;">
             You're receiving this because you have an active job posted on CutConnect.<br>
-            Questions? Email <a href="mailto:cutconnect.support@gmail.com" style="color:#2D6A2D;">cutconnect.support@gmail.com</a>
+            Questions? Email <a href="mailto:cutconnect.support@gmail.com" style="color:#2D6A2D;">cutconnect.support@gmail.com</a><br><br>
+            To unsubscribe from email notifications, email <a href="mailto:cutconnect.support@gmail.com?subject=unsubscribe" style="color:#90a4ae;">cutconnect.support@gmail.com</a> with "unsubscribe" in the subject.
           </p>
         </td></tr>
       </table>
@@ -236,11 +237,12 @@ async function sendEmailToUser(userId, subject, bodyText) {
   try {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, email_notifications')
       .eq('user_id', userId)
       .limit(1)
       .single();
     if (!profile || profile.role !== 'homeowner') return;
+    if (profile.email_notifications === false) return;
     const { data: authUser } = await supabase.auth.admin.getUserById(userId);
     const email = authUser?.user?.email;
     if (!email) return;
@@ -494,6 +496,69 @@ async function sendSignupReminders() {
 }
 
 cron.schedule('0 11 * * *', sendSignupReminders);
+
+// -- Bid reminder emails -- send at 48hr and 96hr after first bid, max 2 emails per job
+async function sendBidReminders() {
+  console.log('[bid-reminder] Running bid reminder check...');
+  try {
+    const now = new Date();
+    const cutoff48 = new Date(now - 48 * 60 * 60 * 1000).toISOString();
+    const cutoff96 = new Date(now - 96 * 60 * 60 * 1000).toISOString();
+    const cutoff120 = new Date(now - 120 * 60 * 60 * 1000).toISOString();
+
+    // Find open jobs with pending bids, where first bid is 48-120hrs old and reminders sent < 2
+    const { data: jobs } = await supabase
+      .from('jobs')
+      .select('id, user_id, poster_name, address, bid_reminder_count')
+      .eq('status', 'open')
+      .lt('bid_reminder_count', 2)
+      .or('bid_reminder_count.is.null,bid_reminder_count.lt.2');
+
+    if (!jobs || jobs.length === 0) return;
+
+    for (const job of jobs) {
+      const reminderCount = job.bid_reminder_count || 0;
+
+      // First reminder: 48hrs after first bid
+      // Second reminder: 96hrs after first bid
+      const { data: bids } = await supabase
+        .from('bids')
+        .select('created_at')
+        .eq('job_id', job.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (!bids || bids.length === 0) continue;
+
+      const firstBidAt = new Date(bids[0].created_at);
+      const hoursSinceBid = (now - firstBidAt) / (1000 * 60 * 60);
+
+      const shouldSendFirst = reminderCount === 0 && hoursSinceBid >= 48;
+      const shouldSendSecond = reminderCount === 1 && hoursSinceBid >= 96;
+
+      if (!shouldSendFirst && !shouldSendSecond) continue;
+
+      const bidCount = await supabase.from('bids').select('id', { count: 'exact' }).eq('job_id', job.id).eq('status', 'pending');
+      const count = bidCount.count || 1;
+      const bidWord = count === 1 ? '1 bid' : `${count} bids`;
+
+      await sendEmailToUser(
+        job.user_id,
+        `CutConnect — You have ${bidWord} waiting on your lawn job`,
+        `Hi ${job.poster_name || 'there'}! You have ${bidWord} waiting on your lawn job${job.address ? ' at ' + job.address : ''}. Open the app to review and choose your mower!`
+      );
+
+      await supabase.from('jobs').update({ bid_reminder_count: reminderCount + 1 }).eq('id', job.id);
+      console.log(`[bid-reminder] Sent reminder #${reminderCount + 1} to job ${job.id}`);
+    }
+  } catch (err) {
+    console.error('[bid-reminder] Error:', err.message);
+  }
+}
+
+cron.schedule('0 14 * * *', sendBidReminders); // 10am ET daily
+
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Admin dashboard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'cutconnect2024';
