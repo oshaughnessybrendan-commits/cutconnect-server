@@ -271,6 +271,21 @@ async function getPushToken(userId) {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Send notification endpoint Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+app.post('/admin/send-message', async (req, res) => {
+  try {
+    const { senderId, receiverId, senderName, receiverName, message } = req.body;
+    const { error } = await supabase.from('messages').insert({
+      sender_id: senderId, receiver_id: receiverId,
+      sender_name: senderName, receiver_name: receiverName,
+      message, read: false,
+    });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/send-notification', async (req, res) => {
   try {
     const { token: rawToken, userId, title, body } = req.body;
@@ -689,7 +704,7 @@ app.get('/admin', requireAdmin, (req, res) => res.send(`<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>ðŸŒ¿ CutConnect Admin</h1>
+  <h1>🌿 CutConnect Admin</h1>
   <p class="subtitle">Last updated: <span id="updated">loading...</span></p>
 
   <div class="range-btns">
