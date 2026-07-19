@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const cron = require('node-cron');
@@ -308,12 +308,12 @@ app.post('/send-notification', async (req, res) => {
       token = await getPushToken(userId);
       console.log(`[notify] userId=${userId} token=${token ?? 'NOT FOUND'}`);
     }
-    // Send email to homeowners regardless of push token
-    if (userId) {
-      await sendEmailToUser(userId, title, `<p>${body}</p><p style=â€margin-top:16px;font-size:13px;color:#666;â€>Open the <a href=â€https://apps.apple.com/th/app/cutconnect-lawn-marketplace/id6764613000â€>CutConnect app</a> to respond.</p>`);
-    }
     if (!token) {
-      console.warn(`[notify] No push token â€” title=â€${title}â€`);
+      // No push token -- fall back to email
+      console.warn(`[notify] No push token -- title="${title}"`);
+      if (userId) {
+        await sendEmailToUser(userId, title, `<p>${body}</p><p style="margin-top:16px;font-size:13px;color:#666;">Open the <a href="https://apps.apple.com/th/app/cutconnect-lawn-marketplace/id6764613000">CutConnect app</a> to respond.</p>`);
+      }
       return res.json({ success: false, reason: 'no_token' });
     }
     await sendPush(token, title, body);
