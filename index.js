@@ -43,6 +43,9 @@ app.post('/authorize-payment', async (req, res) => {
       currency,
       capture_method: 'manual',
       automatic_payment_methods: { enabled: true },
+      payment_method_options: {
+        card: { request_extended_authorization: 'if_available' },
+      },
     };
     if (mowerId) {
       const { data: mowerRows } = await supabase.from('profiles').select('stripe_connect_id, payout_method').eq('user_id', mowerId).eq('role', 'mower').limit(1);
@@ -589,6 +592,53 @@ async function sendBidReminders() {
 }
 
 cron.schedule('0 14 * * *', sendBidReminders); // 10am ET daily
+
+// -- Check Stripe authorization expiry; notify homeowners to re-authorize --
+async function checkAuthorizationExpiry() {
+  console.log('[auth-expiry] Running authorization expiry check...');
+  try {
+    const { data: hires, error } = await supabase
+      .from('hires')
+      .select('*')
+      .eq('status', 'scheduled')
+      .not('payment_intent_id', 'is', null);
+    if (error) { console.error('[auth-expiry] query error:', error.message); return; }
+    if (!hires || hires.length === 0) { console.log('[auth-expiry] No scheduled hires with payment intent.'); return; }
+
+    const now = Date.now();
+    for (const hire of hires) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(hire.payment_intent_id);
+        const createdAt = pi.created * 1000; // Unix seconds -> ms
+        const ageDays = (now - createdAt) / (1000 * 60 * 60 * 24);
+
+        // Extended auth lasts up to 30 days; standard card auth lasts 7 days.
+        const expiresExtended = pi.payment_method_options?.card?.extended_authorization?.status === 'enabled';
+        const notifyThresholdDays = expiresExtended ? 25 : 5;
+
+        if (ageDays >= notifyThresholdDays) {
+          console.log(`[auth-expiry] Hire ${hire.id} auth is ${ageDays.toFixed(1)} days old (extended=${expiresExtended}) -- notifying homeowner`);
+          const token = await getPushToken(hire.homeowner_id);
+          await sendPush(token,
+            'Re-authorize your payment',
+            `Your card hold for ${hire.mower_name}'s job is about to expire. Open CutConnect to re-authorize.`
+          );
+          await sendEmailToUser(hire.homeowner_id,
+            'CutConnect -- Action needed: re-authorize your payment',
+            `Your card authorization for <strong>${hire.mower_name}</strong>'s lawn job is expiring soon. Please open the CutConnect app and re-authorize your card to keep the booking confirmed.`
+          );
+        }
+      } catch (err) {
+        console.error(`[auth-expiry] Failed for hire ${hire.id}:`, err.message);
+      }
+    }
+    console.log('[auth-expiry] Done.');
+  } catch (err) {
+    console.error('[auth-expiry] Error:', err.message);
+  }
+}
+
+cron.schedule('0 12 * * *', checkAuthorizationExpiry); // noon UTC daily
 
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Admin dashboard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
