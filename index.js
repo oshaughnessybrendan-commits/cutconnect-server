@@ -68,6 +68,58 @@ app.post('/authorize-payment', async (req, res) => {
 });
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Stripe: capture + auto payout Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// -- Create next visit hire for recurring jobs after payment --
+async function createNextRecurringVisit(hire) {
+  if (!hire.frequency || hire.frequency === 'one_time') return;
+  const visitNumber = hire.visit_number || 1;
+  const totalVisits = hire.total_visits || null;
+  if (totalVisits && visitNumber >= totalVisits) {
+    console.log(`[recurring] Hire ${hire.id} — all ${totalVisits} visits complete.`);
+    return;
+  }
+
+  // Calculate next job date based on frequency
+  let nextDate = null;
+  if (hire.confirmed_date) {
+    const d = new Date(hire.confirmed_date + 'T12:00:00');
+    if (hire.frequency === 'weekly') d.setDate(d.getDate() + 7);
+    else if (hire.frequency === 'biweekly') d.setDate(d.getDate() + 14);
+    else if (hire.frequency === 'monthly') d.setMonth(d.getMonth() + 1);
+    nextDate = d.toISOString().split('T')[0];
+  }
+
+  const nextVisit = visitNumber + 1;
+  const { error } = await supabase.from('hires').insert({
+    job_id: hire.job_id,
+    homeowner_id: hire.homeowner_id,
+    mower_id: hire.mower_id,
+    mower_name: hire.mower_name,
+    bid_amount: hire.bid_amount,
+    status: 'awaiting_payment',
+    frequency: hire.frequency,
+    visit_number: nextVisit,
+    total_visits: hire.total_visits,
+    confirmed_date: nextDate,
+  });
+
+  if (error) {
+    console.error(`[recurring] Failed to create next hire for ${hire.id}:`, error.message);
+    return;
+  }
+
+  console.log(`[recurring] Created visit ${nextVisit} hire for job ${hire.job_id}, date: ${nextDate}`);
+
+  // Notify homeowner to authorize payment for next visit
+  const token = await getPushToken(hire.homeowner_id);
+  const visitLabel = totalVisits ? `visit ${nextVisit} of ${totalVisits}` : `visit ${nextVisit}`;
+  const dateStr = nextDate
+    ? new Date(nextDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    : 'your next scheduled cut';
+  await sendPush(token,
+    'Authorize payment for next cut',
+    `${hire.mower_name} is scheduled for ${dateStr} (${visitLabel}). Open CutConnect to authorize payment.`
+  );
+}
 app.post('/capture-payment', async (req, res) => {
   try {
     const { paymentIntentId, hireId } = req.body;
@@ -111,6 +163,7 @@ app.post('/capture-payment', async (req, res) => {
           await sendPush(mowerToken, 'Ã°Å¸â€™Â° Payment Received!', `Your payment of $${rawAmt.toFixed(2)} is on its way via ${mower.payout_method}.`);
         }
       }
+      await createNextRecurringVisit(hire).catch(e => console.error('[recurring] error:', e.message));
     }
 
     res.json({ success: true, status: paymentIntent.status });
@@ -466,13 +519,24 @@ async function autoCapturePastDue() {
         console.log(`[auto-capture] Capturing payment for hire ${hire.id} Ã¢â‚¬â€ ${hire.bid_amount}`);
         await stripe.paymentIntents.capture(hire.payment_intent_id);
         await supabase.from('hires').update({ status: 'paid' }).eq('id', hire.id);
-        if (hire.job_id) await supabase.from('jobs').update({ status: 'paid' }).eq('id', hire.job_id);
+        // Only mark job paid if this is the last visit
+        const isLastVisit = !hire.frequency || hire.frequency === 'one_time' || (hire.total_visits && hire.visit_number >= hire.total_visits);
+        if (hire.job_id && isLastVisit) await supabase.from('jobs').update({ status: 'paid' }).eq('id', hire.job_id);
         // Notify both parties
         const mowerToken = await getPushToken(hire.mower_id);
-        await sendPush(mowerToken, 'Ã°Å¸â€™Â° Payment Received!', `Your payment of ${hire.bid_amount} has been automatically processed.`);
+        await sendPush(mowerToken, 'Payment Received!', Your payment of 
+${hire.bid_amount}
+ has been automatically processed.);
         const homeownerToken = await getPushToken(hire.homeowner_id);
-        await sendPush(homeownerToken, 'Ã°Å¸â€™Â³ Payment Processed', `Your payment of ${hire.bid_amount} to ${hire.mower_name} has been automatically processed.`);
-        console.log(`[auto-capture] Success Ã¢â‚¬â€ hire ${hire.id}`);
+        await sendPush(homeownerToken, 'Payment Processed', Your payment of 
+${hire.bid_amount}
+ to 
+${hire.mower_name}
+ has been automatically processed.);
+        await createNextRecurringVisit(hire).catch(e => console.error('[recurring] auto-capture error:', e.message));
+        console.log([auto-capture] Success -- hire 
+${hire.id}
+);
       } catch (err) {
         console.error(`[auto-capture] Failed for hire ${hire.id}:`, err.message);
       }
