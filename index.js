@@ -138,7 +138,7 @@ app.post('/capture-payment', async (req, res) => {
         if (mower?.payout_method === 'stripe' && mower?.stripe_connect_id) {
           // Stripe automatically splits on capture via application_fee_amount + transfer_data
           // set during authorization Ã¢â‚¬â€ no manual transfer needed
-          const payoutAmt = (rawAmt * 0.9).toFixed(2);
+          const payoutAmt = rawAmt.toFixed(2);
           const feeCents = (rawAmt * 0.10).toFixed(2);
           console.log(`[payout] Stripe auto-split on capture Ã¢â‚¬â€ mower gets $${payoutAmt}`);
           const mowerToken = await getPushToken(hire.mower_id);
@@ -148,7 +148,7 @@ app.post('/capture-payment', async (req, res) => {
         } else if (mower?.payout_method === 'venmo' || mower?.payout_method === 'zelle') {
           // Notify Brendan to manually pay the mower
           const adminToken = await getPushToken(ADMIN_USER_ID);
-          const payoutAmt = (rawAmt * 0.9).toFixed(2);
+          const payoutAmt = rawAmt.toFixed(2);
           const payoutInfo = mower.payout_method === 'venmo'
             ? `Venmo: ${mower.venmo_handle || 'not set'}`
             : `Zelle: ${mower.zelle_info || 'not set'}`;
