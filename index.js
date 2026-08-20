@@ -524,19 +524,19 @@ async function autoCapturePastDue() {
         if (hire.job_id && isLastVisit) await supabase.from('jobs').update({ status: 'paid' }).eq('id', hire.job_id);
         // Notify both parties
         const mowerToken = await getPushToken(hire.mower_id);
-        await sendPush(mowerToken, 'Payment Received!', Your payment of 
-${hire.bid_amount}
- has been automatically processed.);
+        await sendPush(mowerToken, 'Payment Received!', `$${hire.bid_amount} has been automatically processed.`);
+
+
+
         const homeownerToken = await getPushToken(hire.homeowner_id);
-        await sendPush(homeownerToken, 'Payment Processed', Your payment of 
-${hire.bid_amount}
- to 
-${hire.mower_name}
- has been automatically processed.);
-        await createNextRecurringVisit(hire).catch(e => console.error('[recurring] auto-capture error:', e.message));
-        console.log([auto-capture] Success -- hire 
-${hire.id}
-);
+        await sendPush(homeownerToken, 'Payment Processed', `Your payment of $${hire.bid_amount} to ${hire.mower_name} has been automatically processed.`);
+
+
+
+
+        console.log(`[auto-capture] Success -- hire ${hire.id}`);
+
+
       } catch (err) {
         console.error(`[auto-capture] Failed for hire ${hire.id}:`, err.message);
       }
