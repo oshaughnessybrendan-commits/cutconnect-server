@@ -579,7 +579,7 @@ async function sendSignupReminders() {
 
       const token = await getPushToken(userId);
       if (token) {
-        await sendPush(token, 'Ã°Å¸Å’Â¿ Ready to get your lawn done?', 'Post a job and get bids from local mowers in minutes.');
+        await sendPush(token, '🌿 Ready to get your lawn done?', 'Post a job and get bids from local mowers in minutes.');
         console.log(`[signup-reminder] Sent to userId=${userId}`);
         sent++;
       }
