@@ -142,9 +142,9 @@ app.post('/capture-payment', async (req, res) => {
           const feeCents = (rawAmt * 0.10).toFixed(2);
           console.log(`[payout] Stripe auto-split on capture Ã¢â‚¬â€ mower gets $${payoutAmt}`);
           const mowerToken = await getPushToken(hire.mower_id);
-          await sendPush(mowerToken, 'Ã°Å¸â€™Â° You\'ve been paid!', `$${payoutAmt} has been transferred to your bank account via Stripe.`);
+          await sendPush(mowerToken, '💰 You\'ve been paid!', `$${payoutAmt} has been transferred to your bank account via Stripe.`);
           const adminToken = await getPushToken(ADMIN_USER_ID);
-          await sendPush(adminToken, 'Ã°Å¸â€™Â° Payment Received', `${mower.name} was paid $${payoutAmt} via Stripe. Your fee: $${feeCents}.`);
+          await sendPush(adminToken, '💰 Payment Received', `${mower.name} was paid $${payoutAmt} via Stripe. Your fee: $${feeCents}.`);
         } else if (mower?.payout_method === 'venmo' || mower?.payout_method === 'zelle') {
           // Notify Brendan to manually pay the mower
           const adminToken = await getPushToken(ADMIN_USER_ID);
@@ -154,13 +154,13 @@ app.post('/capture-payment', async (req, res) => {
             : `Zelle: ${mower.zelle_info || 'not set'}`;
           await sendPush(
             adminToken,
-            'Ã°Å¸â€™Â° Manual Payout Needed',
+            '💰 Manual Payout Needed',
             `Pay ${mower.name} $${payoutAmt} via ${payoutInfo}`
           );
           console.log(`[payout] Manual payout alert sent Ã¢â‚¬â€ ${mower.name} $${payoutAmt} via ${mower.payout_method}`);
           // Still notify mower job is paid
           const mowerToken = await getPushToken(hire.mower_id);
-          await sendPush(mowerToken, 'Ã°Å¸â€™Â° Payment Received!', `Your payment of $${rawAmt.toFixed(2)} is on its way via ${mower.payout_method}.`);
+          await sendPush(mowerToken, '💰 Payment Received!', `Your payment of $${rawAmt.toFixed(2)} is on its way via ${mower.payout_method}.`);
         }
       }
       await createNextRecurringVisit(hire).catch(e => console.error('[recurring] error:', e.message));
@@ -482,12 +482,12 @@ async function sendDailyReminders() {
       }
       if (hire.status === 'awaiting_payment') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(token, 'Ã°Å¸â€™Â³ Action needed Ã¢â‚¬â€ authorize payment',
+        await sendPush(token, '💳 Action needed — authorize payment',
           `${hire.mower_name} accepted your job! Open CutConnect to authorize your card and confirm the booking.`);
       }
       if (hire.status === 'complete') {
         const token = await getPushToken(hire.homeowner_id);
-        await sendPush(token, 'Ã°Å¸â€™Â° Please pay your mower',
+        await sendPush(token, '💰 Please pay your mower',
           `${hire.mower_name} completed your lawn job over 24 hours ago. Open CutConnect to submit payment.`);
       }
     }
