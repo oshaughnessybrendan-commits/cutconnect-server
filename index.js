@@ -462,8 +462,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 async function sendDailyReminders() {
   console.log('Running daily hire reminders...');
   const now = new Date();
-  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-
+  const cutoff = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
   try {
     const { data: hires, error } = await supabase
       .from('hires')
@@ -476,9 +475,9 @@ async function sendDailyReminders() {
 
     for (const hire of hires) {
       if (hire.status === 'requested') {
-        const token = await getPushToken(hire.homeowner_id);
-        await sendPush(token, 'Ã¢ÂÂ³ Still waiting on your mower',
-          `${hire.mower_name} hasn't responded to your hire request yet. You can follow up or cancel in the app.`);
+        const token = await getPushToken(hire.mower_id);
+        await sendPush(token, '🌿 New Hire Request!',
+          `${hire.homeowner_name} is waiting for you to accept a hire request at ${hire.job_address}. Open CutConnect to respond!`);
       }
       if (hire.status === 'awaiting_payment') {
         const token = await getPushToken(hire.homeowner_id);
