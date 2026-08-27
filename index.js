@@ -499,6 +499,36 @@ async function sendDailyReminders() {
 
 cron.schedule('0 10 * * *', sendDailyReminders);
 
+// Notify homeowners of pending bids older than 12 hours
+async function sendPendingBidReminders() {
+  console.log('Running pending bid reminders...');
+  const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data: bids, error } = await supabase
+      .from('bids')
+      .select('*, jobs(*)')
+      .eq('status', 'pending')
+      .lt('created_at', cutoff);
+    if (error) { console.error('Bid reminder query error:', error.message); return; }
+    if (!bids || bids.length === 0) { console.log('No pending bids found.'); return; }
+    const notified = new Set();
+    for (const bid of bids) {
+      const job = bid.jobs;
+      if (!job || !job.user_id || notified.has(job.user_id)) continue;
+      if (['complete', 'paid', 'cancelled', 'scheduled'].includes(job.status)) continue;
+      notified.add(job.user_id);
+      const token = await getPushToken(job.user_id);
+      await sendPush(token, '🌿 Bid waiting on your lawn job!',
+        `A mower has placed a bid on your job. Open CutConnect to review it and get scheduled!`);
+    }
+    console.log(`Pending bid reminders sent to ${notified.size} homeowner(s).`);
+  } catch (err) {
+    console.error('sendPendingBidReminders error:', err.message);
+  }
+}
+
+cron.schedule('0 11 * * *', sendPendingBidReminders);
+
 // Ã¢â€â‚¬Ã¢â€â‚¬ Auto-capture payments 48hrs after job marked complete Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function autoCapturePastDue() {
   console.log('Running auto-capture check...');
