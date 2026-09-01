@@ -511,17 +511,20 @@ async function sendPendingBidReminders() {
       .lt('created_at', cutoff);
     if (error) { console.error('Bid reminder query error:', error.message); return; }
     if (!bids || bids.length === 0) { console.log('No pending bids found.'); return; }
-    const notified = new Set();
+    const notifiedJobs = new Set();
     for (const bid of bids) {
       const job = bid.jobs;
-      if (!job || !job.user_id || notified.has(job.user_id)) continue;
+      if (!job || !job.user_id || notifiedJobs.has(job.id)) continue;
       if (['complete', 'paid', 'cancelled', 'scheduled'].includes(job.status)) continue;
-      notified.add(job.user_id);
+      if ((job.bid_reminder_count || 0) >= 3) continue;
+      notifiedJobs.add(job.id);
       const token = await getPushToken(job.user_id);
+      const cancelNote = job.bid_reminder_count >= 1 ? ' You can also cancel the job in the app if it\'s no longer needed.' : '';
       await sendPush(token, '🌿 Bid waiting on your lawn job!',
-        `A mower has placed a bid on your job. Open CutConnect to review it and get scheduled!`);
+        `A mower has placed a bid on your job. Open CutConnect to review it and get scheduled!${cancelNote}`);
+      await supabase.from('jobs').update({ bid_reminder_count: (job.bid_reminder_count || 0) + 1 }).eq('id', job.id);
     }
-    console.log(`Pending bid reminders sent to ${notified.size} homeowner(s).`);
+    console.log(`Pending bid reminders sent to ${notifiedJobs.size} job(s).`);
   } catch (err) {
     console.error('sendPendingBidReminders error:', err.message);
   }
@@ -732,6 +735,38 @@ async function checkAuthorizationExpiry() {
 }
 
 cron.schedule('0 12 * * *', checkAuthorizationExpiry); // noon UTC daily
+
+// ── Welcome message cron (runs every 5 minutes) ──────────────────────────────
+const BRENDAN_ID = '372a2db2-1ad3-40f7-b44c-56def200bf66';
+const ALREADY_WELCOMED = new Set(['36658575-83d3-41b0-8a6e-cf8637bc2a05']); // Brittany — welcomed manually
+async function sendWelcomeMessages() {
+  const cutoffNew = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const cutoffOld = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, name')
+    .eq('role', 'homeowner')
+    .eq('signup_reminder_sent', false)
+    .neq('user_id', BRENDAN_ID)
+    .lt('created_at', cutoffNew)
+    .gt('created_at', cutoffOld);
+  if (!profiles || profiles.length === 0) return;
+  for (const profile of profiles) {
+    if (ALREADY_WELCOMED.has(profile.user_id)) continue;
+    const firstName = (profile.name || 'there').split(' ')[0];
+    const message = `Hey ${firstName}! Welcome to CutConnect — I'm Brendan, the founder. Really glad you're here. If you have any questions about posting a job or how it works, just message me. Happy to help!`;
+    await supabase.from('messages').insert({
+      sender_id: BRENDAN_ID, receiver_id: profile.user_id,
+      sender_name: 'Brendan', receiver_name: profile.name || '',
+      message, read: false,
+    });
+    await supabase.from('profiles').update({ signup_reminder_sent: true }).eq('user_id', profile.user_id);
+    const token = await getPushToken(profile.user_id);
+    await sendPush(token, '👋 Welcome to CutConnect!', `Hey ${firstName}! I'm Brendan, the founder. Message me with any questions.`);
+    console.log(`[welcome] Sent welcome message to ${profile.name} (${profile.user_id})`);
+  }
+}
+cron.schedule('*/5 * * * *', sendWelcomeMessages);
 
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Admin dashboard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
