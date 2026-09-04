@@ -754,7 +754,14 @@ async function sendWelcomeMessages() {
   for (const profile of profiles) {
     if (ALREADY_WELCOMED.has(profile.user_id)) continue;
     const firstName = (profile.name || 'there').split(' ')[0];
-    const message = `Hey ${firstName}! Welcome to CutConnect — I'm Brendan, the founder. Really glad you're here. If you have any questions about posting a job or how it works, just message me. Happy to help!`;
+    const { data: mowerProfile } = await supabase.from('profiles').select('user_id').eq('user_id', profile.user_id).eq('role', 'mower').limit(1).single();
+    const isMower = !!mowerProfile;
+    const message = isMower
+      ? `Hey ${firstName}! Welcome to CutConnect — I'm Brendan, the founder. Great to have you on as a mower. Make sure your profile is set up with your service area so you start getting notified of jobs nearby. Message me if you need anything!`
+      : `Hey ${firstName}! Welcome to CutConnect — I'm Brendan, the founder. Really glad you're here. If you have any questions about posting a job or how it works, just message me. Happy to help!`;
+    const pushBody = isMower
+      ? `Hey ${firstName}! Set up your service area to start getting job notifications.`
+      : `Hey ${firstName}! I'm Brendan, the founder. Message me with any questions.`;
     await supabase.from('messages').insert({
       sender_id: BRENDAN_ID, receiver_id: profile.user_id,
       sender_name: 'Brendan', receiver_name: profile.name || '',
@@ -762,8 +769,8 @@ async function sendWelcomeMessages() {
     });
     await supabase.from('profiles').update({ signup_reminder_sent: true }).eq('user_id', profile.user_id);
     const token = await getPushToken(profile.user_id);
-    await sendPush(token, '👋 Welcome to CutConnect!', `Hey ${firstName}! I'm Brendan, the founder. Message me with any questions.`);
-    console.log(`[welcome] Sent welcome message to ${profile.name} (${profile.user_id})`);
+    await sendPush(token, '👋 Welcome to CutConnect!', pushBody);
+    console.log(`[welcome] Sent ${isMower ? 'mower' : 'homeowner'} welcome to ${profile.name} (${profile.user_id})`);
   }
 }
 cron.schedule('*/5 * * * *', sendWelcomeMessages);
