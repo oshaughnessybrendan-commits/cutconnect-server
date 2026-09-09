@@ -762,7 +762,7 @@ async function sendWelcomeMessages() {
     const isMower = !!mowerProfile;
     const message = isMower
       ? `Hey ${firstName}! Welcome to CutConnect — I'm Brendan, the founder. Great to have you on as a mower. Make sure your profile is set up with your service area so you start getting notified of jobs nearby. Message me if you need anything!`
-      : `Hey ${firstName}! Welcome to CutConnect — I'm Brendan, the founder. Really glad you're here. If you have any questions about posting a job or how it works, just message me. Happy to help!`;
+      : `Hi ${firstName}! Welcome to CutConnect and thanks for joining. If you have any questions about posting a job or how it works, just message me right here.\nThanks!\n-Brendan`;
     const pushBody = isMower
       ? `Hey ${firstName}! Set up your service area to start getting job notifications.`
       : `Hey ${firstName}! I'm Brendan, the founder. Message me with any questions.`;
