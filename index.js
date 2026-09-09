@@ -583,40 +583,47 @@ cron.schedule('0 * * * *', autoCapturePastDue);
 // and are not registered as a mower.
 async function sendSignupReminders() {
   console.log('Running signup reminders...');
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const cutoffOld = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const cutoffNew = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
   try {
     const { data: usersPage, error: authErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     if (authErr) { console.error('signup-reminder auth list error:', authErr.message); return; }
 
-    const candidates = (usersPage?.users ?? []).filter(u => u.created_at <= cutoff);
+    // Signed up 24–48 hours ago (catch the window once per day)
+    const candidates = (usersPage?.users ?? []).filter(u => u.created_at <= cutoffOld && u.created_at > cutoffNew);
     if (candidates.length === 0) { console.log('No signup-reminder candidates.'); return; }
 
     let sent = 0;
     for (const user of candidates) {
       const userId = user.id;
+      if (userId === BRENDAN_ID) continue;
 
       const { data: profile } = await supabase
-        .from('profiles').select('signup_reminder_sent, role').eq('user_id', userId).limit(1);
+        .from('profiles').select('job_nudge_sent, role').eq('user_id', userId).limit(1);
       if (!profile || profile.length === 0) continue;
-      if (profile[0].signup_reminder_sent) continue;
+      if (profile[0].job_nudge_sent) continue;
       if (profile[0].role === 'mower') continue;
 
       const { data: jobs } = await supabase
         .from('jobs').select('id').eq('user_id', userId).limit(1);
-      if (jobs && jobs.length > 0) continue;
+      if (jobs && jobs.length > 0) {
+        // Already posted — mark so we don't check again
+        await supabase.from('profiles').update({ job_nudge_sent: true }).eq('user_id', userId);
+        continue;
+      }
 
       const token = await getPushToken(userId);
       if (token) {
-        await sendPush(token, '🌿 Ready to get your lawn done?', 'Post a job and get bids from local mowers in minutes.');
-        console.log(`[signup-reminder] Sent to userId=${userId}`);
+        await sendPush(token, '🌿 Ready to get your lawn done?', 'Post a job in 60 seconds and get bids from local mowers.');
+        console.log(`[signup-reminder] Sent nudge to userId=${userId}`);
         sent++;
       }
 
-      await supabase.from('profiles').update({ signup_reminder_sent: true }).eq('user_id', userId);
+      await supabase.from('profiles').update({ job_nudge_sent: true }).eq('user_id', userId);
     }
 
-    console.log(`Signup reminder run complete. Sent ${sent} reminder(s).`);
+    console.log(`Signup reminder run complete. Sent ${sent} nudge(s).`);
   } catch (err) {
     console.error('sendSignupReminders error:', err.message);
   }
