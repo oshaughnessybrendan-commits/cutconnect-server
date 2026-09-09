@@ -43,9 +43,6 @@ app.post('/authorize-payment', async (req, res) => {
       currency,
       capture_method: 'manual',
       automatic_payment_methods: { enabled: true },
-      payment_method_options: {
-        card: { request_extended_authorization: 'if_available' },
-      },
     };
     if (mowerId) {
       const { data: mowerRows } = await supabase.from('profiles').select('stripe_connect_id, payout_method').eq('user_id', mowerId).eq('role', 'mower').limit(1);
