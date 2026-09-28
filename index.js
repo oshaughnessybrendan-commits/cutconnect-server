@@ -35,9 +35,11 @@ app.post('/create-payment-intent', async (req, res) => {
 // Ã¢â€â‚¬Ã¢â€â‚¬ Stripe: authorize only (capture_method: manual) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 app.post('/authorize-payment', async (req, res) => {
   try {
-    const { amount, currency = 'usd', mowerId } = req.body;
+    const { amount, bidAmount, currency = 'usd', mowerId } = req.body;
     const amountCents = Math.round(amount * 100);
-    const feeCents = Math.round(amountCents * 0.10); // 10% platform fee
+    // Fee = total charged minus bid amount (so mower receives exactly the bid amount)
+    const baseCents = bidAmount ? Math.round(bidAmount * 100) : Math.round(amountCents / 1.10);
+    const feeCents = amountCents - baseCents;
     const intentParams = {
       amount: amountCents,
       currency,
